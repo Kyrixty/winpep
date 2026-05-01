@@ -1,0 +1,1 @@
+gcc -g3 -Iinclude/ src/*.c -o build/main.exe
