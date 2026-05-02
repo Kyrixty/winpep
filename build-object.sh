@@ -1,0 +1,1 @@
+gcc -c -g3 -Iinclude/ src/main.c -o build/main.o

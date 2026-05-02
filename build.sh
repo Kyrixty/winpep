@@ -1,1 +1,1 @@
-gcc -g3 -Iinclude/ src/*.c -o build/main.exe
+gcc -g3 -Iinclude/ src/*.c -o build/main.exe && build/main.exe
