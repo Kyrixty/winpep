@@ -185,7 +185,7 @@ typedef struct {
                             a special symbol (see N_SMBL_** definitions above)
                             Note that the section table is 1-indexed (by
                             the format, not internally)*/
-    u16 type;
+    u16 type;           /* See T_SMBL_* and DT_SMBL_* macros above */
     char sclass;        /* storage class */
     char numaux;        /* auxiliary count */
 } symEntry_t;
