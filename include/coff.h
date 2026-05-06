@@ -206,7 +206,6 @@ typedef struct {
  *      ...
  *      [symbol table]
  *      [strings table]
- *      [raw data (raw section data + relocation entries?)]
  */
 
 typedef struct {
