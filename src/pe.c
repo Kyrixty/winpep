@@ -18,4 +18,6 @@ win_pe_t load_pe_from_file(const char* fpath, b8* OUT_is_image) {
     } else { // unsupported (COFF file?)
         perror("Unsupported file type.\n");
     }
+
+    return pe;
 }

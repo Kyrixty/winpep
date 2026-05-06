@@ -1,8 +1,7 @@
 #include <stdio.h>
-#include "pe.h"
+#include "coff.h"
 
 int main() {
-    b8 is_image;
-    win_pe_t pe = load_pe_from_file("build/sample.exe", &is_image);
+    coff_t coff = load_coff("./build/sample.o");
     return 0;
 }
