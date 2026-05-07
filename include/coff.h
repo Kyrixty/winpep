@@ -218,12 +218,12 @@ typedef struct {
     u64 size;
     u8* blob;
     lnnoEntry_t* lnnoLUT;
-} scnBlob;
+} scnBlob_t;
 typedef struct {
     fHdr_t fHdr;
     oHdr_t oHdr;
     sHdr_t* sHdrs;
-    scnBlob* scns;
+    scnBlob_t* scns;
     symEntry_t* symTable;
     strTable_t strTable;
 } coff_t;
