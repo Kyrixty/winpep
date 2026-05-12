@@ -103,6 +103,8 @@
 #define C_SMBL_HIDDEN           106     	/* ext symbol in dmert public lib */
 #define C_SMBL_EFCN	            255     	/* physical end of function */
 
+#define DEBUG_SHOW_RELOC true
+
 #pragma pack(push, 1)
 typedef struct {
     u16 magic;          /* FHDR_MAGIC_AMD64 (more exist but we only support these)  */
@@ -224,6 +226,7 @@ typedef struct {
     oHdr_t oHdr;
     sHdr_t* sHdrs;
     scnBlob_t* scns;
+    relEntry_t** relocs; /* per-section relocation directives */
     symEntry_t* symTable;
     strTable_t strTable;
 } coff_t;
