@@ -207,11 +207,12 @@ typedef struct {
  * v    [?opt header?]
  *      [N section headers]           (.text, .data, .bss, .pdata, .xdata, .rdata, ...)
  * 
- *      [relocation entries]
  *      . [s1Blob]
  *      . [s2Blob]
  *      . [s3Blob]
  *      ...
+ * 
+ *      [relocation entries]
  *      [symbol table]
  *      [strings table]
  */
