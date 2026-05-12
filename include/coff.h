@@ -103,7 +103,7 @@
 #define C_SMBL_HIDDEN           106     	/* ext symbol in dmert public lib */
 #define C_SMBL_EFCN	            255     	/* physical end of function */
 
-#define DEBUG_SHOW_RELOC true
+#define DEBUG_SHOW_DETAILED 1
 
 #pragma pack(push, 1)
 typedef struct {
@@ -173,13 +173,16 @@ typedef struct {
      */
 } lnnoEntry_t;
 
+/* Do NOT use sizeof(symEntry_t) when reading from files. Use
+    SYMENTRY_FSIZE instead. The debugger may break if you 
+    use sizeof(symEntry_t) to calculate file offsets (e.g. strTableOffset) */
 typedef struct {
     union {
         char name[8];
         struct {
             u32 zeroes;
             u32 offset;
-        } meta;
+        } packed;
     } meta;
     i32 value;
     i16 scnum;          /** the section number that this symbol belongs to
@@ -190,7 +193,10 @@ typedef struct {
     u16 type;           /* See T_SMBL_* and DT_SMBL_* macros above */
     char sclass;        /* storage class */
     char numaux;        /* auxiliary count */
+    b32 isaux;
 } symEntry_t;
+
+#define SYMENTRY_FSIZE 18
 
 #pragma pack(pop)
 
@@ -229,6 +235,7 @@ typedef struct {
     relEntry_t** relocs; /* per-section relocation directives */
     symEntry_t* symTable;
     strTable_t strTable;
+    char* testing;
 } coff_t;
 
 coff_t load_coff(const char* fpath, arena_t* arena);

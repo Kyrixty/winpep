@@ -1,5 +1,6 @@
 #include "coff.h"
 #include <memory.h>
+#include <string.h>
 
 /* Size of the size of the str table */
 #define STRTABLE_SIZE_SIZE 4
@@ -35,14 +36,12 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
 
     coff.scns = ALLOC_ARRAY(arena, scnBlob_t, coff.fHdr.nscns);
     coff.relocs = ALLOC_ARRAY(arena, relEntry_t*, coff.fHdr.nscns);
-    /* Grab section-related blobs from header info */
+    /* Grab section-related blobs via section header offsets */
     for (u32 i = 0; i < coff.fHdr.nscns; i++) {
         coff.scns[i].blob = ALLOC_ARRAY(arena, u8, coff.sHdrs[i].size);
         fseek(f, coff.sHdrs[i].scnptr, SEEK_SET);
         fread(coff.scns[i].blob, 1, coff.sHdrs[i].size, f);
         coff.scns[i].size = coff.sHdrs[i].size;
-
-        long curPos = ftell(f);
 
         /* relocation directives */
         if (coff.sHdrs[i].nreloc) {
@@ -51,7 +50,7 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
             // coff.relocs[i] is relEntry_t* (so don't use &coff.relocs[i] !)
             fread(coff.relocs[i], sizeof(relEntry_t), coff.sHdrs[i].nreloc, f);
 
-            if (DEBUG_SHOW_RELOC) {
+            if (DEBUG_SHOW_DETAILED) {
                 for (u32 j = 0; j < coff.sHdrs[i].nreloc; j++) {
                     relEntry_t r = coff.relocs[i][j];
                     printf(
@@ -61,10 +60,16 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
                 }
             }
         }
-    }
 
+        /* line number debug info */
+        if (coff.sHdrs[i].lnnoptr) {
+            coff.scns[i].lnnoLUT = ALLOC_ARRAY(arena, lnnoEntry_t, coff.sHdrs[i].nlnno);
+            fseek(f, coff.sHdrs[i].lnnoptr, SEEK_SET);
+            fread(coff.scns[i].lnnoLUT, sizeof(lnnoEntry_t), coff.sHdrs[i].nlnno, f);
+        }
+    }
     /* Strings Table */
-    u64 strTableOffset = coff.fHdr.symptr + coff.fHdr.nsyms * sizeof(symEntry_t);
+    u64 strTableOffset = coff.fHdr.symptr + coff.fHdr.nsyms * SYMENTRY_FSIZE;
     fseek(f, strTableOffset, SEEK_SET);
     // the format writes the size of strTable.blob in the first 4
     // bytes at strTableOffset, so we shouldn't rely on the size
@@ -72,6 +77,52 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
     fread(&coff.strTable.size, STRTABLE_SIZE_SIZE, 1, f);
     coff.strTable.blob = ALLOC_ARRAY(arena, char, coff.strTable.size);
     fread(coff.strTable.blob, 1, coff.strTable.size, f);
+    if (DEBUG_SHOW_DETAILED) {
+        printf("\n====STRINGS TABLE====\n");
+        for (u32 i = 0;
+            i < coff.strTable.size;
+            i += strlen(coff.strTable.blob + i) + 1) {
+                if (coff.strTable.blob[i]) {
+                    printf("%s\n", coff.strTable.blob + i);
+                }
+        }
+        printf("\n====END STRINGS TABLE====\n");
+    }
 
+    /* Symbol Table */
+    coff.symTable = ALLOC_ARRAY(arena, symEntry_t, coff.fHdr.nsyms);
+    fseek(f, coff.fHdr.symptr, SEEK_SET);
+    char currNumaux;
+    for (u32 i = 0; i < coff.fHdr.nsyms; i++) {
+        fread(&coff.symTable[i], SYMENTRY_FSIZE, 1, f);
+        symEntry_t sym = coff.symTable[i];
+        if (sym.numaux) {
+            currNumaux = sym.numaux;
+            continue;
+        }
+        if (currNumaux) {
+            coff.symTable[i].isaux = true;
+            currNumaux--;
+        }
+    }
+    if (DEBUG_SHOW_DETAILED) {
+        printf("\n====SYMBOL TABLE NAMES====\n");
+        for (u32 i = 0; i < coff.fHdr.nsyms; i++) {
+            symEntry_t sym = coff.symTable[i];
+            if (sym.isaux)
+                printf("<auxiliary symbol>\n");
+            if (sym.meta.packed.zeroes != 0) {
+                printf("%s\n", sym.meta.name);
+            } else {
+                if (coff.strTable.blob[sym.meta.packed.offset]) {
+                    printf("%s\n", coff.strTable.blob + sym.meta.packed.offset);
+                }
+            }
+        }
+        printf("\n====END SYMBOL TABLE NAMES====\n");
+    }
+
+
+    
     return coff;
 }
