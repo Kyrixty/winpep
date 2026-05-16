@@ -28,7 +28,7 @@ char* get_strtable_at(coff_t coff, u32 offset) {
 }
 
 char* get_scn_name(coff_t coff, i32 scnIdx) {
-    if (scnIdx < 0) {
+    if (scnIdx <= 0) {
         return coff.sHdrs[0].name; /* ??? */
     }
     sHdr_t hdr = coff.sHdrs[scnIdx];
@@ -36,7 +36,7 @@ char* get_scn_name(coff_t coff, i32 scnIdx) {
         i32 offset = parse_int(hdr.name);
         return get_strtable_at(coff, offset);
     }
-    return coff.sHdrs[scnIdx].name;
+    return coff.sHdrs[scnIdx - 1].name;
 }
 
 void print_symbol(coff_t coff, symEntry_t sym) {
