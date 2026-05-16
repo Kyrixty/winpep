@@ -181,7 +181,8 @@ typedef struct {
         char name[8];
         struct {
             u32 zeroes;
-            u32 offset;
+            u32 offset; /* You will note the ` -4 ` applied to the offset in load_coff.
+                           are the offsets at the BASE of the String Table. Not strTable.blob */
         } packed;
     } meta;
     i32 value;

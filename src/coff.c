@@ -110,13 +110,11 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
         for (u32 i = 0; i < coff.fHdr.nsyms; i++) {
             symEntry_t sym = coff.symTable[i];
             if (sym.isaux)
-                printf("<auxiliary symbol>\n");
-            if (sym.meta.packed.zeroes != 0) {
-                printf("%s\n", sym.meta.name);
+                printf("[%d] <auxiliary symbol>\n", i);
+            else if (sym.meta.packed.zeroes != 0) {
+                printf("[%d] %s\n", i, sym.meta.name);
             } else {
-                if (coff.strTable.blob[sym.meta.packed.offset]) {
-                    printf("%s\n", coff.strTable.blob + sym.meta.packed.offset);
-                }
+                printf("[%d] %s\n", i, coff.strTable.blob + sym.meta.packed.offset - 4);
             }
         }
         printf("\n====END SYMBOL TABLE NAMES====\n");
