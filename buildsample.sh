@@ -1,0 +1,1 @@
+gcc -g3 -c -Wall samples/sample.c -o build/sample.o
