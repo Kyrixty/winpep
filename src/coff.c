@@ -23,23 +23,23 @@ i32 parse_int(char* s) {
     return x;
 }
 
-char* get_strtable_at(coff_t coff, u32 offset) {
-    return coff.strTable.blob + offset - 4; /* See notes on this in strTable_t */
+char* get_strtable_at(const coff_t* coff, u32 offset) {
+    return coff->strTable.blob + offset - 4; /* See notes on this in strTable_t */
 }
 
-char* get_scn_name(coff_t coff, i32 scnIdx) {
+char* get_scn_name(const coff_t* coff, i32 scnIdx) {
     if (scnIdx <= 0) {
-        return coff.sHdrs[0].name; /* ??? */
+        return coff->sHdrs[0].name; /* ??? */
     }
-    sHdr_t hdr = coff.sHdrs[scnIdx];
+    sHdr_t hdr = coff->sHdrs[scnIdx];
     if (hdr.name[0] == '/') {
         i32 offset = parse_int(hdr.name);
         return get_strtable_at(coff, offset);
     }
-    return coff.sHdrs[scnIdx - 1].name;
+    return coff->sHdrs[scnIdx - 1].name;
 }
 
-void print_symbol(coff_t coff, symEntry_t sym) {
+void print_symbol(const coff_t* coff, symEntry_t sym) {
     char* symScnName = get_scn_name(coff, sym.scnum);
     char* padding = strlen(symScnName) > 8 ? "\t" : "\t\t";
     if (sym.isaux)
@@ -63,20 +63,20 @@ void print_symbol(coff_t coff, symEntry_t sym) {
     }
 }
 
-void print_reloc(coff_t coff, u32 scnIdx, u32 relIdx, relEntry_t rel) {
+void print_reloc(const coff_t* coff, u32 scnIdx, u32 relIdx, relEntry_t rel) {
     printf(
         "\n========\nSection %d ('%s') Reloc %d\nRVADDR: 0x%x\nSYMNDX: %d\nTYPE: 0x%x",
-        scnIdx, coff.sHdrs[scnIdx].name, relIdx, rel.rvaddr, rel.symndx, rel.type
+        scnIdx, get_scn_name(coff, scnIdx), relIdx, rel.rvaddr, rel.symndx, rel.type
     );
 }
 
-void print_str_table(strTable_t strTable) {
+void print_str_table(const strTable_t* strTable) {
     printf("\n====STRINGS TABLE====\n");
     for (u32 i = 0;
-        i < strTable.size;
-        i += strlen(strTable.blob + i) + 1) {
-            if (strTable.blob[i]) {
-                printf("%s\n", strTable.blob + i);
+        i < strTable->size;
+        i += strlen(strTable->blob + i) + 1) {
+            if (strTable->blob[i]) {
+                printf("%s\n", strTable->blob + i);
             }
     }
     printf("\n====END STRINGS TABLE====\n");
@@ -87,6 +87,7 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
     FILE *f = open_file(fpath, "rb");
     fseek(f, 0, SEEK_END);
     long flen = ftell(f);
+    long beforePos = 0;
     fseek(f, 0, SEEK_SET);
     fread(&coff.fHdr.magic, sizeof(coff.fHdr.magic), 1, f);
 
@@ -106,6 +107,22 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
             exit(1);
         }
     }
+
+
+    /* Strings Table */
+    beforePos = ftell(f);
+    u64 strTableOffset = coff.fHdr.symptr + coff.fHdr.nsyms * SYMENTRY_FSIZE;
+    fseek(f, strTableOffset, SEEK_SET);
+    // the format writes the size of strTable.blob in the first 4
+    // bytes at strTableOffset, so we shouldn't rely on the size
+    // of the field.
+    fread(&coff.strTable.size, STRTABLE_SIZE_SIZE, 1, f);
+    coff.strTable.blob = ALLOC_ARRAY(arena, char, coff.strTable.size);
+    fread(coff.strTable.blob, 1, coff.strTable.size, f);
+    if (DEBUG_SHOW_DETAILED) {
+        print_str_table(&coff.strTable);
+    }
+    fseek(f, beforePos, SEEK_SET);
 
     coff.sHdrs = ALLOC_ARRAY(arena, sHdr_t, coff.fHdr.nscns);
     fread(coff.sHdrs, sizeof(sHdr_t), coff.fHdr.nscns, f);
@@ -130,7 +147,7 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
             if (DEBUG_SHOW_DETAILED) {
                 for (u32 j = 0; j < coff.sHdrs[i].nreloc; j++) {
                     relEntry_t r = coff.relocs[i][j];
-                    print_reloc(coff, i, j, r);
+                    print_reloc(&coff, i, j, r);
                 }
             }
         }
@@ -142,18 +159,7 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
             fread(coff.scns[i].lnnoLUT, sizeof(lnnoEntry_t), coff.sHdrs[i].nlnno, f);
         }
     }
-    /* Strings Table */
-    u64 strTableOffset = coff.fHdr.symptr + coff.fHdr.nsyms * SYMENTRY_FSIZE;
-    fseek(f, strTableOffset, SEEK_SET);
-    // the format writes the size of strTable.blob in the first 4
-    // bytes at strTableOffset, so we shouldn't rely on the size
-    // of the field.
-    fread(&coff.strTable.size, STRTABLE_SIZE_SIZE, 1, f);
-    coff.strTable.blob = ALLOC_ARRAY(arena, char, coff.strTable.size);
-    fread(coff.strTable.blob, 1, coff.strTable.size, f);
-    if (DEBUG_SHOW_DETAILED) {
-        print_str_table(coff.strTable);
-    }
+    
 
     /* Symbol Table */
     coff.symTable = ALLOC_ARRAY(arena, symEntry_t, coff.fHdr.nsyms);
@@ -176,7 +182,7 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
         for (u32 i = 0; i < coff.fHdr.nsyms; i++) {
             symEntry_t sym = coff.symTable[i];
             printf("[%d]\t", i);
-            print_symbol(coff, sym);
+            print_symbol(&coff, sym);
         }
         printf("\n====END SYMBOL TABLE NAMES====\n");
     }
