@@ -5,6 +5,83 @@
 /* Size of the size of the str table */
 #define STRTABLE_SIZE_SIZE 4
 
+
+/**
+ * Sums all numeric chars in s (0-9)
+ * Other characters are ignored.
+ */
+i32 parse_int(char* s) {
+    int x = 0;
+    u32 i = 0;
+    while (*s) {
+        if ('0' <= *s && '9' >= *s) {
+            x *= 10;
+            x += (*s - '0');
+        }
+        s++;
+    }
+    return x;
+}
+
+char* get_strtable_at(coff_t coff, u32 offset) {
+    return coff.strTable.blob + offset - 4; /* See notes on this in strTable_t */
+}
+
+char* get_scn_name(coff_t coff, i32 scnIdx) {
+    if (scnIdx < 0) {
+        return coff.sHdrs[0].name; /* ??? */
+    }
+    sHdr_t hdr = coff.sHdrs[scnIdx];
+    if (hdr.name[0] == '/') {
+        i32 offset = parse_int(hdr.name);
+        return get_strtable_at(coff, offset);
+    }
+    return coff.sHdrs[scnIdx].name;
+}
+
+void print_symbol(coff_t coff, symEntry_t sym) {
+    char* symScnName = get_scn_name(coff, sym.scnum);
+    char* padding = strlen(symScnName) > 8 ? "\t" : "\t\t";
+    if (sym.isaux)
+        printf("%s%s(%s)\t<auxiliary symbol>\n",
+            symScnName,
+            padding,
+            STORAGE_NAME_MAP[sym.sclass]);
+    else if (sym.meta.packed.zeroes != 0) {
+        printf("%s%s(%s)\t%s\n",
+            symScnName,
+            padding,
+            STORAGE_NAME_MAP[sym.sclass],
+            sym.meta.name
+        );
+    } else {
+        printf("%s%s(%s)\t%s\n",
+            symScnName,
+            padding,
+            STORAGE_NAME_MAP[sym.sclass],
+            get_strtable_at(coff, sym.meta.packed.offset));
+    }
+}
+
+void print_reloc(coff_t coff, u32 scnIdx, u32 relIdx, relEntry_t rel) {
+    printf(
+        "\n========\nSection %d ('%s') Reloc %d\nRVADDR: 0x%x\nSYMNDX: %d\nTYPE: 0x%x",
+        scnIdx, coff.sHdrs[scnIdx].name, relIdx, rel.rvaddr, rel.symndx, rel.type
+    );
+}
+
+void print_str_table(strTable_t strTable) {
+    printf("\n====STRINGS TABLE====\n");
+    for (u32 i = 0;
+        i < strTable.size;
+        i += strlen(strTable.blob + i) + 1) {
+            if (strTable.blob[i]) {
+                printf("%s\n", strTable.blob + i);
+            }
+    }
+    printf("\n====END STRINGS TABLE====\n");
+}
+
 coff_t load_coff(const char* fpath, arena_t* arena) {
     coff_t coff = {0};
     FILE *f = open_file(fpath, "rb");
@@ -53,10 +130,7 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
             if (DEBUG_SHOW_DETAILED) {
                 for (u32 j = 0; j < coff.sHdrs[i].nreloc; j++) {
                     relEntry_t r = coff.relocs[i][j];
-                    printf(
-                        "\n========\nSection %d ('%s') Reloc %d\nRVADDR: 0x%x\nSYMNDX: %d\nTYPE: 0x%x",
-                        i, coff.sHdrs[i].name, j, r.rvaddr, r.symndx, r.type
-                    );
+                    print_reloc(coff, i, j, r);
                 }
             }
         }
@@ -78,15 +152,7 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
     coff.strTable.blob = ALLOC_ARRAY(arena, char, coff.strTable.size);
     fread(coff.strTable.blob, 1, coff.strTable.size, f);
     if (DEBUG_SHOW_DETAILED) {
-        printf("\n====STRINGS TABLE====\n");
-        for (u32 i = 0;
-            i < coff.strTable.size;
-            i += strlen(coff.strTable.blob + i) + 1) {
-                if (coff.strTable.blob[i]) {
-                    printf("%s\n", coff.strTable.blob + i);
-                }
-        }
-        printf("\n====END STRINGS TABLE====\n");
+        print_str_table(coff.strTable);
     }
 
     /* Symbol Table */
@@ -109,18 +175,13 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
         printf("\n====SYMBOL TABLE NAMES====\n");
         for (u32 i = 0; i < coff.fHdr.nsyms; i++) {
             symEntry_t sym = coff.symTable[i];
-            if (sym.isaux)
-                printf("[%d] <auxiliary symbol>\n", i);
-            else if (sym.meta.packed.zeroes != 0) {
-                printf("[%d] %s\n", i, sym.meta.name);
-            } else {
-                printf("[%d] %s\n", i, coff.strTable.blob + sym.meta.packed.offset - 4);
-            }
+            printf("[%d]\t", i);
+            print_symbol(coff, sym);
         }
         printf("\n====END SYMBOL TABLE NAMES====\n");
     }
 
-
+    fclose(f);
     
     return coff;
 }

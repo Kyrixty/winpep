@@ -103,6 +103,38 @@
 #define C_SMBL_HIDDEN           106     	/* ext symbol in dmert public lib */
 #define C_SMBL_EFCN	            255     	/* physical end of function */
 
+static char* STORAGE_NAME_MAP[] = {
+"C_SMBL_NULL",	   
+"C_SMBL_AUTO",	   
+"C_SMBL_EXT",	   
+"C_SMBL_STAT",	   
+"C_SMBL_REG",	   
+"C_SMBL_EXTDEF",  
+"C_SMBL_LABEL",   
+"C_SMBL_ULABEL",
+"C_SMBL_MOS",	   
+"C_SMBL_ARG",	   
+"C_SMBL_STRTAG",
+"C_SMBL_MOU",	   
+"C_SMBL_UNTAG",   
+"C_SMBL_TPDEF",   
+"C_SMBL_USTATIC", 
+"C_SMBL_ENTAG",   
+"C_SMBL_MOE",	   
+"C_SMBL_REGPARM", 
+"C_SMBL_FIELD",   
+"C_SMBL_AUTOARG", 
+"C_SMBL_LASTENT", 
+[100] = "C_SMBL_BLOCK",   
+[101] = "C_SMBL_FCN",	   
+[102] = "C_SMBL_EOS",	   
+[103] = "C_SMBL_FILE",	   
+[104] = "C_SMBL_LINE",	   
+[105] = "C_SMBL_ALIAS",   
+[106] = "C_SMBL_HIDDEN",  
+[255] = "C_SMBL_EFCN",	   
+};
+
 #define DEBUG_SHOW_DETAILED 1
 
 #pragma pack(push, 1)
