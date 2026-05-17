@@ -102,6 +102,7 @@ void print_str_table(const coff_t* coff) {
 
 void print_symbol_table(const coff_t* coff) {
     printf("\n====SYMBOL TABLE NAMES====\n");
+    printf("Indx\tSctn\t\tStrg\t\tName\n");
     for (u32 i = 0; i < coff->fHdr.nsyms; i++) {
         symEntry_t sym = coff->symTable[i];
         printf("[%d]\t", i);
