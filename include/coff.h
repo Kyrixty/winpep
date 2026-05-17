@@ -269,9 +269,21 @@ typedef struct {
     relEntry_t** relocs; /* per-section relocation directives */
     symEntry_t* symTable;
     strTable_t strTable;
-    char* testing;
 } coff_t;
 
 coff_t load_coff(const char* fpath, arena_t* arena);
+char* get_strtable_at(const coff_t* coff, u32 offset);
+
+char* get_scn_name(const coff_t* coff, i32 scnIdx);
+
+const char* get_symbol_name(const coff_t* coff, const symEntry_t* sym);
+
+void print_symbol(const coff_t* coff, symEntry_t sym);
+
+void print_reloc(const coff_t* coff, u32 scnIdx, u32 relIdx, relEntry_t rel);
+
+void print_str_table(const coff_t* coff);
+void print_symbol_table(const coff_t* coff);
+void print_all_relocs(const coff_t* coff);
 
 #endif

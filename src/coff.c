@@ -39,38 +39,56 @@ char* get_scn_name(const coff_t* coff, i32 scnIdx) {
     return coff->sHdrs[scnIdx - 1].name;
 }
 
+static const char* AUX_NAME = "<auxiliary symbol>";
+
+const char* get_symbol_name(const coff_t* coff, const symEntry_t* sym) {
+    if (sym->isaux)
+        return AUX_NAME;
+    if (sym->meta.packed.zeroes != 0) {
+        return sym->meta.name;
+    }
+    return get_strtable_at(coff, sym->meta.packed.offset);
+}
+
 void print_symbol(const coff_t* coff, symEntry_t sym) {
     char* symScnName = get_scn_name(coff, sym.scnum);
-    char* padding = strlen(symScnName) > 8 ? "\t" : "\t\t";
+    const char* symName = get_symbol_name(coff, &sym);
+    char* padding = (!symScnName || strlen(symScnName) > 8) ? "\t" : "\t\t";
     if (sym.isaux)
-        printf("%s%s(%s)\t<auxiliary symbol>\n",
+        printf("%s%s(%s)\t%s\n",
             symScnName,
             padding,
-            STORAGE_NAME_MAP[sym.sclass]);
+            STORAGE_NAME_MAP[sym.sclass],
+            AUX_NAME);
     else if (sym.meta.packed.zeroes != 0) {
         printf("%s%s(%s)\t%s\n",
             symScnName,
             padding,
             STORAGE_NAME_MAP[sym.sclass],
-            sym.meta.name
-        );
+            symName);
     } else {
         printf("%s%s(%s)\t%s\n",
             symScnName,
             padding,
             STORAGE_NAME_MAP[sym.sclass],
-            get_strtable_at(coff, sym.meta.packed.offset));
+            symName);
     }
 }
 
 void print_reloc(const coff_t* coff, u32 scnIdx, u32 relIdx, relEntry_t rel) {
     printf(
-        "\n========\nSection %d ('%s') Reloc %d\nRVADDR: 0x%x\nSYMNDX: %d\nTYPE: 0x%x",
-        scnIdx, get_scn_name(coff, scnIdx), relIdx, rel.rvaddr, rel.symndx, rel.type
+        "\n========\nSection %d ('%s') Reloc %d\nRVADDR: 0x%x\nSYMBOL: %s\nTYPE: 0x%x",
+        scnIdx,
+        get_scn_name(coff, scnIdx),
+        relIdx,
+        rel.rvaddr,
+        get_symbol_name(coff, &coff->symTable[rel.symndx]),
+        rel.type
     );
 }
 
-void print_str_table(const strTable_t* strTable) {
+void print_str_table(const coff_t* coff) {
+    const strTable_t* strTable = &coff->strTable;
     printf("\n====STRINGS TABLE====\n");
     for (u32 i = 0;
         i < strTable->size;
@@ -80,6 +98,25 @@ void print_str_table(const strTable_t* strTable) {
             }
     }
     printf("\n====END STRINGS TABLE====\n");
+}
+
+void print_symbol_table(const coff_t* coff) {
+    printf("\n====SYMBOL TABLE NAMES====\n");
+    for (u32 i = 0; i < coff->fHdr.nsyms; i++) {
+        symEntry_t sym = coff->symTable[i];
+        printf("[%d]\t", i);
+        print_symbol(coff, sym);
+    }
+    printf("\n====END SYMBOL TABLE NAMES====\n");
+}
+
+void print_all_relocs(const coff_t* coff) {
+    for (u32 i = 0; i < coff->fHdr.nscns; i++) {
+        for (u32 j = 0; j < coff->sHdrs[i].nreloc; j++) {
+            relEntry_t r = coff->relocs[i][j];
+            print_reloc(coff, i, j, r);
+        }
+    }
 }
 
 coff_t load_coff(const char* fpath, arena_t* arena) {
@@ -107,6 +144,12 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
             exit(1);
         }
     }
+    coff.sHdrs = ALLOC_ARRAY(arena, sHdr_t, coff.fHdr.nscns);
+    fread(coff.sHdrs, sizeof(sHdr_t), coff.fHdr.nscns, f);
+    u64 sHdrsEndOffset = ftell(f);
+    /* Warning: processing sections prior to loading the section headers
+    may yield weird behaviour. Unless you're confident you need to, it's
+    best to process parts of the file after section headers have been read. */
 
 
     /* Strings Table */
@@ -119,49 +162,11 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
     fread(&coff.strTable.size, STRTABLE_SIZE_SIZE, 1, f);
     coff.strTable.blob = ALLOC_ARRAY(arena, char, coff.strTable.size);
     fread(coff.strTable.blob, 1, coff.strTable.size, f);
-    if (DEBUG_SHOW_DETAILED) {
-        print_str_table(&coff.strTable);
-    }
+    
     fseek(f, beforePos, SEEK_SET);
 
-    coff.sHdrs = ALLOC_ARRAY(arena, sHdr_t, coff.fHdr.nscns);
-    fread(coff.sHdrs, sizeof(sHdr_t), coff.fHdr.nscns, f);
-    u64 sHdrsEndOffset = ftell(f);
-
-    coff.scns = ALLOC_ARRAY(arena, scnBlob_t, coff.fHdr.nscns);
-    coff.relocs = ALLOC_ARRAY(arena, relEntry_t*, coff.fHdr.nscns);
-    /* Grab section-related blobs via section header offsets */
-    for (u32 i = 0; i < coff.fHdr.nscns; i++) {
-        coff.scns[i].blob = ALLOC_ARRAY(arena, u8, coff.sHdrs[i].size);
-        fseek(f, coff.sHdrs[i].scnptr, SEEK_SET);
-        fread(coff.scns[i].blob, 1, coff.sHdrs[i].size, f);
-        coff.scns[i].size = coff.sHdrs[i].size;
-
-        /* relocation directives */
-        if (coff.sHdrs[i].nreloc) {
-            coff.relocs[i] = ALLOC_ARRAY(arena, relEntry_t, coff.sHdrs[i].nreloc);
-            fseek(f, coff.sHdrs[i].relptr, SEEK_SET);
-            // coff.relocs[i] is relEntry_t* (so don't use &coff.relocs[i] !)
-            fread(coff.relocs[i], sizeof(relEntry_t), coff.sHdrs[i].nreloc, f);
-
-            if (DEBUG_SHOW_DETAILED) {
-                for (u32 j = 0; j < coff.sHdrs[i].nreloc; j++) {
-                    relEntry_t r = coff.relocs[i][j];
-                    print_reloc(&coff, i, j, r);
-                }
-            }
-        }
-
-        /* line number debug info */
-        if (coff.sHdrs[i].lnnoptr) {
-            coff.scns[i].lnnoLUT = ALLOC_ARRAY(arena, lnnoEntry_t, coff.sHdrs[i].nlnno);
-            fseek(f, coff.sHdrs[i].lnnoptr, SEEK_SET);
-            fread(coff.scns[i].lnnoLUT, sizeof(lnnoEntry_t), coff.sHdrs[i].nlnno, f);
-        }
-    }
-    
-
     /* Symbol Table */
+    beforePos = ftell(f);
     coff.symTable = ALLOC_ARRAY(arena, symEntry_t, coff.fHdr.nsyms);
     fseek(f, coff.fHdr.symptr, SEEK_SET);
     char currNumaux;
@@ -177,14 +182,33 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
             currNumaux--;
         }
     }
-    if (DEBUG_SHOW_DETAILED) {
-        printf("\n====SYMBOL TABLE NAMES====\n");
-        for (u32 i = 0; i < coff.fHdr.nsyms; i++) {
-            symEntry_t sym = coff.symTable[i];
-            printf("[%d]\t", i);
-            print_symbol(&coff, sym);
+
+    fseek(f, beforePos, SEEK_SET);
+
+    
+    coff.scns = ALLOC_ARRAY(arena, scnBlob_t, coff.fHdr.nscns);
+    coff.relocs = ALLOC_ARRAY(arena, relEntry_t*, coff.fHdr.nscns);
+    /* Grab section-related blobs via section header offsets */
+    for (u32 i = 0; i < coff.fHdr.nscns; i++) {
+        coff.scns[i].blob = ALLOC_ARRAY(arena, u8, coff.sHdrs[i].size);
+        fseek(f, coff.sHdrs[i].scnptr, SEEK_SET);
+        fread(coff.scns[i].blob, 1, coff.sHdrs[i].size, f);
+        coff.scns[i].size = coff.sHdrs[i].size;
+
+        /* relocation directives */
+        if (coff.sHdrs[i].nreloc) {
+            coff.relocs[i] = ALLOC_ARRAY(arena, relEntry_t, coff.sHdrs[i].nreloc);
+            fseek(f, coff.sHdrs[i].relptr, SEEK_SET);
+            // coff.relocs[i] is relEntry_t* (so don't use &coff.relocs[i] !)
+            fread(coff.relocs[i], sizeof(relEntry_t), coff.sHdrs[i].nreloc, f);
         }
-        printf("\n====END SYMBOL TABLE NAMES====\n");
+
+        /* line number debug info */
+        if (coff.sHdrs[i].lnnoptr) {
+            coff.scns[i].lnnoLUT = ALLOC_ARRAY(arena, lnnoEntry_t, coff.sHdrs[i].nlnno);
+            fseek(f, coff.sHdrs[i].lnnoptr, SEEK_SET);
+            fread(coff.scns[i].lnnoLUT, sizeof(lnnoEntry_t), coff.sHdrs[i].nlnno, f);
+        }
     }
 
     fclose(f);
