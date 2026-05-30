@@ -93,25 +93,12 @@ void print_symbol(const coff_t* coff, symEntry_t sym) {
     char* symScnName = get_scn_name(coff, sym.scnum);
     const char* symName = get_symbol_name(coff, &sym);
     char* padding = (!symScnName || strlen(symScnName) > 8) ? "\t" : "\t\t";
-    if (sym.isaux)
-        printf("%s%s(%s)\t%s\n",
-            symScnName,
-            padding,
-            STORAGE_NAME_MAP[sym.sclass],
-            AUX_NAME);
-    else if (sym.meta.packed.zeroes != 0) {
-        printf("%s%s(%s)\t%s\n",
-            symScnName,
-            padding,
-            STORAGE_NAME_MAP[sym.sclass],
-            symName);
-    } else {
-        printf("%s%s(%s)\t%s\n",
-            symScnName,
-            padding,
-            STORAGE_NAME_MAP[sym.sclass],
-            symName);
-    }
+    printf("%s%s(%s)\t0x%x\t%s\n",
+        symScnName,
+        padding,
+        STORAGE_NAME_MAP[sym.sclass],
+        sym.value,
+        symName);
 }
 
 void print_reloc(const coff_t* coff, u32 scnIdx, u32 relIdx, relEntry_t rel) {
@@ -126,7 +113,7 @@ void print_reloc(const coff_t* coff, u32 scnIdx, u32 relIdx, relEntry_t rel) {
     );
 }
 
-void print_str_table(const coff_t* coff) {
+void print_str_table(const coff_t* coff, const char* ignored) {
     const strTable_t* strTable = &coff->strTable;
     printf("\n====STRINGS TABLE====\n");
     for (u32 i = 0;
@@ -139,9 +126,9 @@ void print_str_table(const coff_t* coff) {
     printf("\n====END STRINGS TABLE====\n");
 }
 
-void print_symbol_table(const coff_t* coff) {
+void print_symbol_table(const coff_t* coff, const char* ignored) {
     printf("\n====SYMBOL TABLE NAMES====\n");
-    printf("Indx\tSctn\t\tStrg\t\tName\n");
+    printf("Indx\tSctn\t\tStrg\t\tValu\tName\n");
     for (u32 i = 0; i < coff->fHdr.nsyms; i++) {
         symEntry_t sym = coff->symTable[i];
         printf("[%d]\t", i);
@@ -150,13 +137,34 @@ void print_symbol_table(const coff_t* coff) {
     printf("\n====END SYMBOL TABLE NAMES====\n");
 }
 
-void print_all_relocs(const coff_t* coff) {
+void print_all_relocs(const coff_t* coff, const char* ignored) {
     for (u32 i = 0; i < coff->fHdr.nscns; i++) {
         for (u32 j = 0; j < coff->sHdrs[i].nreloc; j++) {
             relEntry_t r = coff->relocs[i][j];
             print_reloc(coff, i, j, r);
         }
     }
+}
+
+void print_scn(const coff_t* coff, i32 scnIdx) {
+    sHdr_t sHdr = coff->sHdrs[scnIdx];
+    char* scn_name = get_scn_name(coff, scnIdx);
+    printf("0x%x\t0x%x\t0x%x\t0x%x\t%s\n",
+        sHdr.scnptr,
+        sHdr.size,
+        sHdr.vaddr,
+        sHdr.lnnoptr,
+        scn_name);
+}
+
+void print_all_scns(const coff_t* coff, const char* ignored) {
+    printf("===== BEGIN SECTIONS =====\n");
+    printf("Indx\tOffset\tSize\tVAddr\tLnnoptr\tName\n");
+    for (i32 i = 0; i < coff->fHdr.nscns; i++) {
+        printf("[%d]\t", i);
+        print_scn(coff, i);
+    }
+    printf("===== END SECTIONS =====\n");
 }
 
 coff_t load_coff(const char* fpath, arena_t* arena) {

@@ -16,23 +16,38 @@ bool str_eq(const char* s1, const char* s2, int MAX_CMP) {
     return true;
 }
 
+bool str_startswith(const char* target, const char* query, int MAX_CMP) {
+    if (target == query) return true;
+    if (target == NULL) return false;
+    if (query == NULL) return true;
+    for (u32 i = 0; i < MAX_CMP; i++) {
+        if (query[i] == '\0')
+            return true;
+        if (target[i] != query[i])
+            return false;
+    }
+    return true;
+}
+
 typedef struct {
     char* query;
-    void (*callback)(const coff_t* c);
+    void (*callback)(const coff_t* c, const char* query);
+    char* args_fmt;
 } qryEntry_t;
 
 #define N_QUERIES (sizeof(QUERY_MAP) / sizeof(qryEntry_t))
 
-void quit(const coff_t* coff) {
+void quit(const coff_t* coff, const char* ignored) {
     exit(0);
 }
 
 qryEntry_t QUERY_MAP[] = {
+    {.query = "cmds",       .callback = NULL},
+    {.query = "scns",       .callback = &print_all_scns},
     {.query = "strtable",   .callback = &print_str_table},
     {.query = "symtable",   .callback = &print_symbol_table},
     {.query = "relocs",     .callback = &print_all_relocs},
     {.query = "quit",       .callback = &quit},
-    {.query = "cmds",       .callback = NULL},
 };
 
 void cmds(const coff_t* coff) {
@@ -71,8 +86,8 @@ int main(int nArgs, char** args) {
         }
         for (u32 i = 0; i < N_QUERIES; i++) {
             qryEntry_t qe = QUERY_MAP[i];
-            if (str_eq(qry, qe.query, QUERY_SIZE)) {
-                qe.callback(&coff);
+            if (str_startswith(qry, qe.query, QUERY_SIZE)) {
+                qe.callback(&coff, qry);
                 foundCommand = true;
                 break;
             }

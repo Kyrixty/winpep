@@ -110,46 +110,6 @@
 #define C_RLOC_REL32            0x4         /* 32-bit relative address from the byte following the relocation */
 #define C_RLOC_SECREL           0xb         /* 32-bit offset of the target from the beginning of its section (for debugging / static thread local storage)*/
 
-static char* STORAGE_NAME_MAP[] = {
-"C_SMBL_NULL",	   
-"C_SMBL_AUTO",	   
-"C_SMBL_EXT",	   
-"C_SMBL_STAT",	   
-"C_SMBL_REG",	   
-"C_SMBL_EXTDEF",  
-"C_SMBL_LABEL",   
-"C_SMBL_ULABEL",
-"C_SMBL_MOS",	   
-"C_SMBL_ARG",	   
-"C_SMBL_STRTAG",
-"C_SMBL_MOU",	   
-"C_SMBL_UNTAG",   
-"C_SMBL_TPDEF",   
-"C_SMBL_USTATIC", 
-"C_SMBL_ENTAG",   
-"C_SMBL_MOE",	   
-"C_SMBL_REGPARM", 
-"C_SMBL_FIELD",   
-"C_SMBL_AUTOARG", 
-"C_SMBL_LASTENT", 
-[100] = "C_SMBL_BLOCK",   
-[101] = "C_SMBL_FCN",	   
-[102] = "C_SMBL_EOS",	   
-[103] = "C_SMBL_FILE",	   
-[104] = "C_SMBL_LINE",	   
-[105] = "C_SMBL_ALIAS",   
-[106] = "C_SMBL_HIDDEN",  
-[255] = "C_SMBL_EFCN",	   
-};
-
-static char* RELOC_NAME_MAP[] = {
-    "ABSOLUTE",
-    "ADDR64",
-    "ADDR32",
-    [0x4] = "REL32",
-    [0xb] = "SECREL",
-};
-
 #define DEBUG_SHOW_DETAILED 1
 
 #pragma pack(push, 1)
@@ -288,17 +248,15 @@ typedef struct {
 
 coff_t load_coff(const char* fpath, arena_t* arena);
 char* get_strtable_at(const coff_t* coff, u32 offset);
-
 char* get_scn_name(const coff_t* coff, i32 scnIdx);
-
 const char* get_symbol_name(const coff_t* coff, const symEntry_t* sym);
-
 void print_symbol(const coff_t* coff, symEntry_t sym);
-
 void print_reloc(const coff_t* coff, u32 scnIdx, u32 relIdx, relEntry_t rel);
+void print_scn(const coff_t* coff, i32 scnIdx);
+void print_str_table(const coff_t* coff, const char* passNull);
+void print_symbol_table(const coff_t* coff, const char* passNull);
+void print_all_relocs(const coff_t* coff, const char* passNull);
+void print_all_scns(const coff_t* coff, const char* passNull);
 
-void print_str_table(const coff_t* coff);
-void print_symbol_table(const coff_t* coff);
-void print_all_relocs(const coff_t* coff);
 
 #endif
