@@ -5,6 +5,45 @@
 /* Size of the size of the str table */
 #define STRTABLE_SIZE_SIZE 4
 
+static char* STORAGE_NAME_MAP[] = {
+"C_SMBL_NULL",	   
+"C_SMBL_AUTO",	   
+"C_SMBL_EXT",	   
+"C_SMBL_STAT",	   
+"C_SMBL_REG",	   
+"C_SMBL_EXTDEF",  
+"C_SMBL_LABEL",   
+"C_SMBL_ULABEL",
+"C_SMBL_MOS",	   
+"C_SMBL_ARG",	   
+"C_SMBL_STRTAG",
+"C_SMBL_MOU",	   
+"C_SMBL_UNTAG",   
+"C_SMBL_TPDEF",   
+"C_SMBL_USTATIC", 
+"C_SMBL_ENTAG",   
+"C_SMBL_MOE",	   
+"C_SMBL_REGPARM", 
+"C_SMBL_FIELD",   
+"C_SMBL_AUTOARG", 
+"C_SMBL_LASTENT", 
+[100] = "C_SMBL_BLOCK",   
+[101] = "C_SMBL_FCN",	   
+[102] = "C_SMBL_EOS",	   
+[103] = "C_SMBL_FILE",	   
+[104] = "C_SMBL_LINE",	   
+[105] = "C_SMBL_ALIAS",   
+[106] = "C_SMBL_HIDDEN",  
+[255] = "C_SMBL_EFCN",	   
+};
+
+static char* RELOC_NAME_MAP[] = {
+    "ABSOLUTE",
+    "ADDR64",
+    "ADDR32",
+    [0x4] = "REL32",
+    [0xb] = "SECREL",
+};
 
 /**
  * Sums all numeric chars in s (0-9)

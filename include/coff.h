@@ -103,6 +103,13 @@
 #define C_SMBL_HIDDEN           106     	/* ext symbol in dmert public lib */
 #define C_SMBL_EFCN	            255     	/* physical end of function */
 
+/* Non-exhaustive (so far!) */
+#define C_RLOC_ABSOLUTE         0x0         /* ignored */
+#define C_RLOC_ADDR64           0x1         /* 64-bit VA of relocation target */
+#define C_RLOC_ADDR32           0x2         /* 32-bit ^ */
+#define C_RLOC_REL32            0x4         /* 32-bit relative address from the byte following the relocation */
+#define C_RLOC_SECREL           0xb         /* 32-bit offset of the target from the beginning of its section (for debugging / static thread local storage)*/
+
 static char* STORAGE_NAME_MAP[] = {
 "C_SMBL_NULL",	   
 "C_SMBL_AUTO",	   
@@ -133,6 +140,14 @@ static char* STORAGE_NAME_MAP[] = {
 [105] = "C_SMBL_ALIAS",   
 [106] = "C_SMBL_HIDDEN",  
 [255] = "C_SMBL_EFCN",	   
+};
+
+static char* RELOC_NAME_MAP[] = {
+    "ABSOLUTE",
+    "ADDR64",
+    "ADDR32",
+    [0x4] = "REL32",
+    [0xb] = "SECREL",
 };
 
 #define DEBUG_SHOW_DETAILED 1
