@@ -2,6 +2,7 @@
 #define RCC_COMMON_H
 #include <stdint.h>
 #include <stdbool.h>
+#include <ctype.h>
 
 typedef uint8_t u8;
 typedef uint16_t u16;
@@ -26,6 +27,6 @@ typedef u32 b32;
  * Returns `true` if `lwr` <= `val` && `val` <= `upr`
  */
 #define WITHIN_RANGE(val, lwr, upr) (((lwr) <= (val) && (val) <= (upr)))
-
+#define PRINTABLE(c) (isdigit(c) || isalpha(c) || ispunct(c))
 
 #endif

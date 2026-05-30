@@ -224,21 +224,38 @@ void hexdump(const coff_t* coff, const char* query) {
 
 
     printf("==== BEGIN HEXDUMP @0x%x:0x%x =====\n",
-        ((u32)((u64)coff->fileBlob)) + offset,
-        ((u32)((u64)coff->fileBlob)) + offset + size);
+        offset,
+        offset + size);
     u32 i = offset;
+    printf("            \t");
+    for (u32 k = 0; k < colsPerRow; k++) {
+        printf("%02x ", k);
+    }
+    printf("\t\tDecoded Text\n");
     while (i < offset + size) {
         printf("<0x%08x>\t", i);
         for (u32 j = 0; j < colsPerRow; j++) {
             if ((i + j) < coff->fileLen)
                 printf("%02x ", coff->fileBlob[i + j] & 0xff);
+            else
+                printf("   ");
+        }
+        printf("\t\t");
+        for (u32 j = 0; j < colsPerRow; j++) {
+            if ((i + j) < coff->fileLen) {
+                char c = coff->fileBlob[i + j];
+                if (PRINTABLE(c))
+                    printf("%c ", c);
+                else
+                    printf(". ");
+            }
         }
         printf("\n");
         i += colsPerRow;
     }
     printf("==== END HEXDUMP @0x%x:0x%x =====\n",
-        ((u32)((u64)coff->fileBlob)) + offset,
-        ((u32)((u64)coff->fileBlob)) + offset + size);
+        offset,
+        offset + size);
 }
 
 coff_t load_coff(const char* fpath, arena_t* arena) {
