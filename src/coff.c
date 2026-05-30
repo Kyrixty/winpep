@@ -62,7 +62,7 @@ i32 parse_int(char* s) {
     return x;
 }
 
-static u32 char_to_num[] = {
+static u8 char_to_num[] = {
     ['0'] = 0,
     ['1'] = 1,
     ['2'] = 2,
@@ -207,11 +207,49 @@ void print_all_scns(const coff_t* coff, const char* ignored) {
     printf("===== END SECTIONS =====\n");
 }
 
+void hexdump(const coff_t* coff, const char* query) {
+    u32 offset = 0;
+    u32 size = 0;
+    u32 colsPerRow = 0;
+    i32 matched = sscanf(query, "hexdump %d 0x%x 0x%x\n", &colsPerRow, &offset, &size);
+    if (matched != 3) {
+        printf("Usage: hexdump COLSPERROW OFFSET_HEX SIZE_HEX\n");
+        printf("Example: hexdump 5 0xffe 0xff => prints 0xff (5 bytes per row of output) bytes as hex starting at offset 0xff in the COFF file\n");
+        return;
+    }
+    if (offset + size >= coff->fileLen) {
+        printf("hexdump: offset + size must be within file bounds.\n");
+        return;
+    }
+
+
+    printf("==== BEGIN HEXDUMP @0x%x:0x%x =====\n",
+        ((u32)((u64)coff->fileBlob)) + offset,
+        ((u32)((u64)coff->fileBlob)) + offset + size);
+    u32 i = offset;
+    while (i < offset + size) {
+        printf("<0x%08x>\t", i);
+        for (u32 j = 0; j < colsPerRow; j++) {
+            if ((i + j) < coff->fileLen)
+                printf("%02x ", coff->fileBlob[i + j] & 0xff);
+        }
+        printf("\n");
+        i += colsPerRow;
+    }
+    printf("==== END HEXDUMP @0x%x:0x%x =====\n",
+        ((u32)((u64)coff->fileBlob)) + offset,
+        ((u32)((u64)coff->fileBlob)) + offset + size);
+}
+
 coff_t load_coff(const char* fpath, arena_t* arena) {
     coff_t coff = {0};
     FILE *f = open_file(fpath, "rb");
     fseek(f, 0, SEEK_END);
     long flen = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    coff.fileBlob = ALLOC_ARRAY(arena, char, flen);
+    fread(coff.fileBlob, 1, flen, f);
+    coff.fileLen = flen;
     long beforePos = 0;
     fseek(f, 0, SEEK_SET);
     fread(&coff.fHdr.magic, sizeof(coff.fHdr.magic), 1, f);

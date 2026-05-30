@@ -47,6 +47,7 @@ qryEntry_t QUERY_MAP[] = {
     {.query = "strtable",   .callback = &print_str_table},
     {.query = "symtable",   .callback = &print_symbol_table},
     {.query = "relocs",     .callback = &print_all_relocs},
+    {.query = "hexdump",    .callback = &hexdump},
     {.query = "quit",       .callback = &quit},
 };
 
