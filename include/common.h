@@ -22,5 +22,10 @@ typedef u32 b32;
 #define MAX(a, b) (((a) > (b) ? (a) : (b)))
 
 #define WORD_SIZE (sizeof(void*))
+/**
+ * Returns `true` if `lwr` <= `val` && `val` <= `upr`
+ */
+#define WITHIN_RANGE(val, lwr, upr) (((lwr) <= (val) && (val) <= (upr)))
+
 
 #endif

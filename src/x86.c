@@ -18,13 +18,6 @@ static char* OPCODE_MAP[] = {
     [0x00] = "ADD"
 };
 
-/**
- * Returns `true` if `lwr` <= `val` && `val` <= `upr`
- */
-bool within_range(int val, int lwr, int upr) {
-    return lwr <= val && val <= upr;
-}
-
 x86Instr_t disassemble(arena_t* arena, u8* blob) {
     /**
      * An instruction is of the format:
