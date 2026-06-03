@@ -45,23 +45,6 @@ static char* RELOC_NAME_MAP[] = {
     [0xb] = "SECREL",
 };
 
-/**
- * Sums all numeric chars in s (0-9)
- * Other characters are ignored.
- */
-i32 parse_int(char* s) {
-    int x = 0;
-    if (!s) return x;
-    while (*s) {
-        if ('0' <= *s && '9' >= *s) {
-            x *= 10;
-            x += (*s - '0');
-        }
-        s++;
-    }
-    return x;
-}
-
 static u8 char_to_num[] = {
     ['0'] = 0,
     ['1'] = 1,
@@ -81,25 +64,53 @@ static u8 char_to_num[] = {
     ['f'] = 15, ['F'] = 15
 };
 
+
 /**
- * Parses a number in `s` with base `base`. 
- * Note that it does not respect the range of values
- * possible in a given base: parse_int("f", 8) will return 15.
+ * Returns -1 on error (c outside of base bounds or not a digit), 
+ * otherwise returns the digit value given a base.
  */
-i32 parse_num(char* s, i32 base) {
-    int x = 0;
-    if (!s) return x;
-    while (*s) {
-        x *= base;
-        if (WITHIN_RANGE(*s, '0', '9'))
-            x += char_to_num[*s];
-        if (WITHIN_RANGE(*s, 'a', 'f'))
-            x += char_to_num[*s];
-        if (WITHIN_RANGE(*s, 'A', 'F'))
-            x += char_to_num[*s];
-        s++;
+u32 digit_value(char c, u32 base) {
+    u32 d = 0;
+    if ('0' <= c && c <= '9')
+        d = c - '0';
+    else if ('a' <= c && c <= 'z')
+        d = c - 'a' + 10;
+    else if ('A' <= c && c <= 'Z')
+        d = c - 'a' + 10;
+    else
+        return -1;
+    return d < base ? d : -1;
+}
+
+/**
+ * Parses an integer in `s` with base `base`. 
+ * Check outNumParsed to see how many characters
+ * in s were parsed (or set it to NULL if you don't
+ * care about this value)
+ * 
+ * *outNumParsed == 0 indicates an error
+ * (outNumParsed will be set if at least 1 digit was parsed,
+ * otherwise it will retain it's value before this function
+ * was called.)
+ */
+i32 parse_int(char* s, i32 base, u32* outNumParsed) {
+    bool any = false;
+    i32 val = 0;
+    i32 d = 0;
+    u32 nParsed = 0;
+    i32 sign = 1;
+    if (!s) return 0;
+    while (isspace(*s)) { nParsed++; s++; }
+    if (*s == '-') { nParsed++; sign = -1; }
+    while (*s && (d = digit_value(*s++, base)) != -1) {
+        val = val * base + d;
+        any = true;
+        nParsed++;
     }
-    return x;
+    if (any && outNumParsed != NULL) {
+        *outNumParsed = nParsed;
+    }
+    return sign * val;
 }
 
 char* get_strtable_at(const coff_t* coff, u32 offset) {
@@ -112,7 +123,7 @@ char* get_scn_name(const coff_t* coff, i32 scnIdx) {
     }
     sHdr_t hdr = coff->sHdrs[scnIdx];
     if (hdr.name[0] == '/') {
-        i32 offset = parse_int(hdr.name);
+        i32 offset = parse_int(hdr.name + 1, 10, NULL);
         return get_strtable_at(coff, offset);
     }
     return coff->sHdrs[scnIdx - 1].name;
@@ -235,14 +246,14 @@ void hexdump(const coff_t* coff, const char* query) {
     while (i < offset + size) {
         printf("<0x%08x>\t", i);
         for (u32 j = 0; j < colsPerRow; j++) {
-            if ((i + j) < coff->fileLen)
+            if ((i + j) < offset + size)
                 printf("%02x ", coff->fileBlob[i + j] & 0xff);
             else
                 printf("   ");
         }
         printf("\t\t");
         for (u32 j = 0; j < colsPerRow; j++) {
-            if ((i + j) < coff->fileLen) {
+            if ((i + j) < offset + size) {
                 char c = coff->fileBlob[i + j];
                 if (PRINTABLE(c))
                     printf("%c ", c);
@@ -312,7 +323,7 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
     beforePos = ftell(f);
     coff.symTable = ALLOC_ARRAY(arena, symEntry_t, coff.fHdr.nsyms);
     fseek(f, coff.fHdr.symptr, SEEK_SET);
-    char currNumaux;
+    char currNumaux = 0;
     for (u32 i = 0; i < coff.fHdr.nsyms; i++) {
         fread(&coff.symTable[i], SYMENTRY_FSIZE, 1, f);
         symEntry_t sym = coff.symTable[i];

@@ -1,1 +1,1 @@
-gcc -Wall -g3 -Iinclude/ src/*.c -o build/main.exe
+gcc -Wall -g3 -O3 -Iinclude/ src/*.c -o build/main.exe
