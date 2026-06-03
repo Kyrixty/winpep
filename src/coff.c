@@ -231,25 +231,16 @@ void print_all_scns(const coff_t* coff, const char* ignored, arena_t* _ignored) 
     printf("===== END SECTIONS =====\n");
 }
 
-void hexdump(const coff_t* coff, const char* query, arena_t* _ignored) {
-    u32 offset = 0;
-    u32 size = 0;
-    u32 colsPerRow = 0;
-    i32 matched = sscanf(query, "hexdump %d 0x%x 0x%x\n", &colsPerRow, &offset, &size);
-    if (matched != 3) {
-        printf("Usage: hexdump COLSPERROW OFFSET_HEX SIZE_HEX\n");
-        printf("Example: hexdump 5 0xffe 0xff => prints 0xff (5 bytes per row of output) bytes as hex starting at offset 0xff in the COFF file\n");
-        return;
-    }
+/**
+ * May want to just return a buffer, but for now, printing is fine
+ */
+static void __hexdump(const coff_t* coff, u32 colsPerRow, u32 offset, u32 size) {
     if (offset + size >= coff->fileLen) {
         printf("hexdump: offset + size must be within file bounds.\n");
         return;
     }
 
 
-    printf("==== BEGIN HEXDUMP @0x%x:0x%x =====\n",
-        offset,
-        offset + size);
     u32 i = offset;
     printf("            \t");
     for (u32 k = 0; k < colsPerRow; k++) {
@@ -277,6 +268,22 @@ void hexdump(const coff_t* coff, const char* query, arena_t* _ignored) {
         printf("\n");
         i += colsPerRow;
     }
+}
+
+void hexdump(const coff_t* coff, const char* query, arena_t* _ignored) {
+    u32 offset = 0;
+    u32 size = 0;
+    u32 colsPerRow = 0;
+    i32 matched = sscanf(query, "hexdump %d 0x%x 0x%x\n", &colsPerRow, &offset, &size);
+    if (matched != 3) {
+        printf("Usage: hexdump COLSPERROW OFFSET_HEX SIZE_HEX\n");
+        printf("Example: hexdump 5 0xffe 0xff => prints 0xff (5 bytes per row of output) bytes as hex starting at offset 0xff in the COFF file\n");
+        return;
+    }
+    printf("==== BEGIN HEXDUMP @0x%x:0x%x =====\n",
+        offset,
+        offset + size);
+    __hexdump(coff, colsPerRow, offset, size);
     printf("==== END HEXDUMP @0x%x:0x%x =====\n",
         offset,
         offset + size);
