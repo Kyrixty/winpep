@@ -63,12 +63,12 @@
  * You should use these macros to determine the type of a symbol.
  * If you want to use your own, symEntry_t.type = base type + derived type << 8
  */
-#define SYMBOL_T(sym)       ((sym) & 0x0f)
-#define SYMBOL_DT(sym)      ((sym) >> 8)
-#define SYMBOL_IS_NON(sym)  (SYMBOL_DT(sym) == DT_SMBL_NON)
-#define SYMBOL_IS_PTR(sym)  (SYMBOL_DT(sym) == DT_SMBL_PTR)
-#define SYMBOL_IS_FCN(sym)  (SYMBOL_DT(sym) == DT_SMBL_FCN)
-#define SYMBOL_IS_ARY(sym)  (SYMBOL_DT(sym) == DT_SMBL_ARY)
+#define SYMBOL_T(symType)       ((symType) & 0x0f)
+#define SYMBOL_DT(symType)      ((symType) >> 4)
+#define SYMBOL_IS_NON(symType)  (SYMBOL_DT(symType) == DT_SMBL_NON)
+#define SYMBOL_IS_PTR(symType)  (SYMBOL_DT(symType) == DT_SMBL_PTR)
+#define SYMBOL_IS_FCN(symType)  (SYMBOL_DT(symType) == DT_SMBL_FCN)
+#define SYMBOL_IS_ARY(symType)  (SYMBOL_DT(symType) == DT_SMBL_ARY)
 /* Symbol Storage Classes */
 /**
  * These define where and what the symbol represents
@@ -201,7 +201,9 @@ typedef struct {
     u16 type;           /* See T_SMBL_* and DT_SMBL_* macros above */
     char sclass;        /* storage class */
     char numaux;        /* auxiliary count */
+    // non-file below
     b32 isaux;
+    b32 isfn;
 } symEntry_t;
 
 #define SYMENTRY_FSIZE 18
@@ -246,6 +248,9 @@ typedef struct {
     strTable_t strTable;
     u8* fileBlob;
     u32 fileLen;
+    // non-file below
+    u32* fnSymIdxs;
+    u32 nfns;
 } coff_t;
 
 coff_t load_coff(const char* fpath, arena_t* arena);
@@ -260,6 +265,6 @@ void print_str_table(const coff_t* coff, const char* passNull, arena_t* _passNul
 void print_symbol_table(const coff_t* coff, const char* passNull, arena_t* _passNull);
 void print_all_relocs(const coff_t* coff, const char* passNull, arena_t* _passNull);
 void print_all_scns(const coff_t* coff, const char* passNull, arena_t* _passNull);
-
+void print_fns_sorted(const coff_t* coff, const char* ignored, arena_t* arena);
 
 #endif

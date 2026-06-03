@@ -24,7 +24,7 @@ static qryEntry_t QUERY_MAP[] = {
     {.query = "symtable",   .callback = print_symbol_table},
     {.query = "relocs",     .callback = print_all_relocs},
     {.query = "hexdump",    .callback = hexdump},
-    {.query = "fnssorted",  .callback = print_fns_sorted},
+    {.query = "fns",        .callback = print_fns_sorted},
     {.query = "quit",       .callback = quit},
 };
 

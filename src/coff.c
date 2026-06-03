@@ -1,4 +1,5 @@
 #include "coff.h"
+#include "utils.h"
 #include <memory.h>
 #include <string.h>
 
@@ -117,29 +118,80 @@ char* get_strtable_at(const coff_t* coff, u32 offset) {
     return coff->strTable.blob + offset - 4; /* See notes on this in strTable_t */
 }
 
+#define SCNUM_TO_SCIDX(scnum) (scnum - 1)
+
+sHdr_t* get_scn_hdr(const coff_t* coff, i32 scnIdx) {
+    if (scnIdx <= 0) {
+        return &coff->sHdrs[0]; /* ??? */
+    }
+    return &coff->sHdrs[scnIdx];
+}
+
+scnBlob_t* get_scn_blob(const coff_t* coff, i32 scnIdx) {
+    if (scnIdx <= 0) {
+        return &coff->scns[0]; /* ??? */
+    }
+    return &coff->scns[scnIdx];
+}
+
 char* get_scn_name(const coff_t* coff, i32 scnIdx) {
     if (scnIdx <= 0) {
         return coff->sHdrs[0].name; /* ??? */
     }
-    sHdr_t hdr = coff->sHdrs[scnIdx];
+    sHdr_t hdr = *get_scn_hdr(coff, scnIdx);
     if (hdr.name[0] == '/') {
         i32 offset = parse_int(hdr.name + 1, 10, NULL);
         return get_strtable_at(coff, offset);
     }
-    return coff->sHdrs[scnIdx - 1].name;
+    return coff->sHdrs[scnIdx].name;
 }
 
-static i32 __scn_cmp_qsort(const void* a, const void* b) {
+static i32 __sym_cmp_qsort(const void* a, const void* b) {
     return ((symEntry_t*)a)->value - ((symEntry_t*)b)->value;
 }
 
-void print_fns_sorted(const coff_t* coff, const char* ignored) {
+bool static sym_is_fn(const coff_t* coff, symEntry_t sym) {
+    // Unsure if this is correct, may also be slow for many symbols
+    char* scnName = get_scn_name(coff, SCNUM_TO_SCIDX(sym.scnum));
+    char* symName = get_symbol_name(coff, &sym);
+    return SYMBOL_IS_FCN(sym.type);
+}
+
+symEntry_t* get_fn_symbols(const coff_t* coff, arena_t* arena, u32* outTableSize) {
+    u32 nsyms = coff->fHdr.nsyms;
+    u32 nfns = coff->nfns;
+    u32 tableSize = sizeof(symEntry_t) * nfns;
+
+    // Grab functions from symTable
+    symEntry_t* tmp = ALLOC_ARRAY(arena, symEntry_t, nfns);
+    for (u32 i = 0; i < nfns; i++) {
+        symEntry_t sym = coff->symTable[coff->fnSymIdxs[i]];
+        tmp[i] = sym;
+    }
     qsort(
-        coff->symTable,
-        coff->fHdr.nsyms,
+        tmp,
+        nfns,
         sizeof(symEntry_t),
-        __scn_cmp_qsort
+        __sym_cmp_qsort
     );
+    if (outTableSize) {
+        *outTableSize = tableSize;
+    }
+
+    return tmp;
+}
+
+void print_fns_sorted(const coff_t* coff, const char* ignored, arena_t* arena) {
+    // Don't want to sort coff->symTable in place so we need to
+    // copy.
+    u32 nfns = coff->nfns;
+    u32 tableSize = 0;
+    symEntry_t* fnSymbols = get_fn_symbols(coff, arena, &tableSize);
+    
+    for (u32 i = 0; i < nfns; i++) {
+        print_symbol(coff, fnSymbols[i]);
+    }
+    arena_pop(arena, tableSize);
 }
 
 static const char* AUX_NAME = "<auxiliary symbol>";
@@ -154,11 +206,12 @@ const char* get_symbol_name(const coff_t* coff, const symEntry_t* sym) {
 }
 
 void print_symbol(const coff_t* coff, symEntry_t sym) {
-    char* symScnName = get_scn_name(coff, sym.scnum);
+    char* symScnName = get_scn_name(coff, SCNUM_TO_SCIDX(sym.scnum));
     const char* symName = get_symbol_name(coff, &sym);
     char* padding = (!symScnName || strlen(symScnName) > 8) ? "\t" : "\t\t";
-    printf("%s%s(%s)\t0x%x\t%s\n",
+    printf("%s\t%d%s(%s)\t0x%x\t%s\n",
         symScnName,
+        sym.scnum,
         padding,
         STORAGE_NAME_MAP[sym.sclass],
         sym.value,
@@ -192,7 +245,7 @@ void print_str_table(const coff_t* coff, const char* ignored, arena_t* _ignored)
 
 void print_symbol_table(const coff_t* coff, const char* ignored, arena_t* _ignored) {
     printf("\n====SYMBOL TABLE NAMES====\n");
-    printf("Indx\tSctn\t\tStrg\t\tValu\tName\n");
+    printf("Indx\tSctn\tSnNo\t\tStrg\t\tValu\tName\n");
     for (u32 i = 0; i < coff->fHdr.nsyms; i++) {
         symEntry_t sym = coff->symTable[i];
         printf("[%d]\t", i);
@@ -240,7 +293,6 @@ static void __hexdump(const coff_t* coff, u32 colsPerRow, u32 offset, u32 size) 
         return;
     }
 
-
     u32 i = offset;
     printf("            \t");
     for (u32 k = 0; k < colsPerRow; k++) {
@@ -270,23 +322,50 @@ static void __hexdump(const coff_t* coff, u32 colsPerRow, u32 offset, u32 size) 
     }
 }
 
-void hexdump(const coff_t* coff, const char* query, arena_t* _ignored) {
+void hexdump(const coff_t* coff, const char* query, arena_t* arena) {
     u32 offset = 0;
     u32 size = 0;
     u32 colsPerRow = 0;
     i32 matched = sscanf(query, "hexdump %d 0x%x 0x%x\n", &colsPerRow, &offset, &size);
-    if (matched != 3) {
-        printf("Usage: hexdump COLSPERROW OFFSET_HEX SIZE_HEX\n");
+    i32 isFnDump = str_startswith(query, "hexdump fns", 11);
+    if (!isFnDump && (matched != 3 || colsPerRow == 0)) {
+        printf("Usage:\thexdump [COLSPERROW > 0] OFFSET_HEX SIZE_HEX\n\thexdump fns\n");
         printf("Example: hexdump 5 0xffe 0xff => prints 0xff (5 bytes per row of output) bytes as hex starting at offset 0xff in the COFF file\n");
+        printf("Example: hexdump fns => Prints hexdump of all function symbols in the file.\n");
         return;
     }
-    printf("==== BEGIN HEXDUMP @0x%x:0x%x =====\n",
-        offset,
-        offset + size);
-    __hexdump(coff, colsPerRow, offset, size);
-    printf("==== END HEXDUMP @0x%x:0x%x =====\n",
-        offset,
-        offset + size);
+
+    if (!isFnDump) { 
+        printf("==== BEGIN HEXDUMP @0x%x:0x%x =====\n",
+            offset,
+            offset + size);
+            __hexdump(coff, colsPerRow, offset, size);
+        printf("==== END HEXDUMP @0x%x:0x%x =====\n",
+            offset,
+            offset + size);
+    }
+    else {
+        u32 tableSize = 0;
+        symEntry_t* fnSymbols = get_fn_symbols(coff, arena, &tableSize);
+        printf("==== BEGIN HEXDUMP @FUNCTIONS ====\n");
+        for (u32 i = 0; i < coff->nfns; i++) {
+            symEntry_t sym = fnSymbols[i];
+            sHdr_t sHdr = *get_scn_hdr(coff, SCNUM_TO_SCIDX(sym.scnum));
+            u32 offset = sHdr.scnptr + sym.value;
+            u32 size = 0;
+            
+            if (i == coff->nfns - 1)
+                size = sHdr.scnptr + sHdr.size - offset;
+            else
+                size = fnSymbols[i + 1].value - sym.value;
+            if (offset == size)
+                continue;
+            printf("%s:\n", get_symbol_name(coff, &sym));
+            __hexdump(coff, 16, offset, size);
+        }
+        printf("==== END HEXDUMP @FUNCTIONS ====\n");
+    }
+    
 }
 
 coff_t load_coff(const char* fpath, arena_t* arena) {
@@ -295,7 +374,7 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
     fseek(f, 0, SEEK_END);
     long flen = ftell(f);
     fseek(f, 0, SEEK_SET);
-    coff.fileBlob = ALLOC_ARRAY(arena, char, flen);
+    coff.fileBlob = ALLOC_ARRAY(arena, u8, flen);
     fread(coff.fileBlob, 1, flen, f);
     coff.fileLen = flen;
     long beforePos = 0;
@@ -344,9 +423,14 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
     coff.symTable = ALLOC_ARRAY(arena, symEntry_t, coff.fHdr.nsyms);
     fseek(f, coff.fHdr.symptr, SEEK_SET);
     char currNumaux = 0;
+    u32 nfns = 0;
     for (u32 i = 0; i < coff.fHdr.nsyms; i++) {
         fread(&coff.symTable[i], SYMENTRY_FSIZE, 1, f);
         symEntry_t sym = coff.symTable[i];
+        if (sym_is_fn(&coff, sym)) {
+            coff.symTable[i].isfn = true;
+            nfns++;
+        }
         if (sym.numaux) {
             currNumaux = sym.numaux;
             continue;
@@ -355,8 +439,16 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
             coff.symTable[i].isaux = true;
             currNumaux--;
         }
+        
     }
-
+    // setup function symbol indexes
+    coff.fnSymIdxs = ALLOC_ARRAY(arena, u32, nfns);
+    coff.nfns = nfns;
+    u32 j = 0;
+    for (u32 i = 0; i < coff.fHdr.nsyms; i++) {
+        if (coff.symTable[i].isfn)
+            coff.fnSymIdxs[j++] = i;
+    }
     fseek(f, beforePos, SEEK_SET);
 
     

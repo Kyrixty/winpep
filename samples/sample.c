@@ -5,6 +5,12 @@ static int vb = 123;
 static double aReallyLongName = 5.0;
 int externallyAccessible = 40;
 extern int externallyDefined;
+/* Unless you specify the pointer as const
+(i.e. T* const var) then only the data will be
+considered const (and therefore held in rdata)*/
+static const char* dataStr = "Hello, rdata (from data)!";
+static const char const* alsoDataStr = "Hello, rdata (from data)2!";
+static const char* const rdataStr  = "Hello, rdata (from rdata)!";
 
 void my_func(int x) {
     static int staticInNonStatic = 12;
