@@ -38,32 +38,32 @@ static char* STORAGE_NAME_MAP[] = {
 [255] = "C_SMBL_EFCN",	   
 };
 
-static char* RELOC_NAME_MAP[] = {
-    "ABSOLUTE",
-    "ADDR64",
-    "ADDR32",
-    [0x4] = "REL32",
-    [0xb] = "SECREL",
-};
+// static char* RELOC_NAME_MAP[] = {
+//     "ABSOLUTE",
+//     "ADDR64",
+//     "ADDR32",
+//     [0x4] = "REL32",
+//     [0xb] = "SECREL",
+// };
 
-static u8 char_to_num[] = {
-    ['0'] = 0,
-    ['1'] = 1,
-    ['2'] = 2,
-    ['3'] = 3,
-    ['4'] = 4,
-    ['5'] = 5,
-    ['6'] = 6,
-    ['7'] = 7,
-    ['8'] = 8,
-    ['9'] = 9,
-    ['a'] = 10, ['A'] = 10,
-    ['b'] = 11, ['B'] = 11,
-    ['c'] = 12, ['C'] = 12,
-    ['d'] = 13, ['D'] = 13,
-    ['e'] = 14, ['E'] = 14,
-    ['f'] = 15, ['F'] = 15
-};
+// static u8 char_to_num[] = {
+//     ['0'] = 0,
+//     ['1'] = 1,
+//     ['2'] = 2,
+//     ['3'] = 3,
+//     ['4'] = 4,
+//     ['5'] = 5,
+//     ['6'] = 6,
+//     ['7'] = 7,
+//     ['8'] = 8,
+//     ['9'] = 9,
+//     ['a'] = 10, ['A'] = 10,
+//     ['b'] = 11, ['B'] = 11,
+//     ['c'] = 12, ['C'] = 12,
+//     ['d'] = 13, ['D'] = 13,
+//     ['e'] = 14, ['E'] = 14,
+//     ['f'] = 15, ['F'] = 15
+// };
 
 
 /**
@@ -114,7 +114,7 @@ i32 parse_int(char* s, i32 base, u32* outNumParsed) {
     return sign * val;
 }
 
-char* get_strtable_at(const coff_t* coff, u32 offset) {
+const char* get_strtable_at(const coff_t* coff, u32 offset) {
     return coff->strTable.blob + offset - 4; /* See notes on this in strTable_t */
 }
 
@@ -134,7 +134,7 @@ scnBlob_t* get_scn_blob(const coff_t* coff, i32 scnIdx) {
     return &coff->scns[scnIdx];
 }
 
-char* get_scn_name(const coff_t* coff, i32 scnIdx) {
+const char* get_scn_name(const coff_t* coff, i32 scnIdx) {
     if (scnIdx <= 0) {
         return coff->sHdrs[0].name; /* ??? */
     }
@@ -152,13 +152,10 @@ static i32 __sym_cmp_qsort(const void* a, const void* b) {
 
 bool static sym_is_fn(const coff_t* coff, symEntry_t sym) {
     // Unsure if this is correct, may also be slow for many symbols
-    char* scnName = get_scn_name(coff, SCNUM_TO_SCIDX(sym.scnum));
-    char* symName = get_symbol_name(coff, &sym);
     return SYMBOL_IS_FCN(sym.type);
 }
 
 symEntry_t* get_fn_symbols(const coff_t* coff, arena_t* arena, u32* outTableSize) {
-    u32 nsyms = coff->fHdr.nsyms;
     u32 nfns = coff->nfns;
     u32 tableSize = sizeof(symEntry_t) * nfns;
 
@@ -206,7 +203,7 @@ const char* get_symbol_name(const coff_t* coff, const symEntry_t* sym) {
 }
 
 void print_symbol(const coff_t* coff, symEntry_t sym) {
-    char* symScnName = get_scn_name(coff, SCNUM_TO_SCIDX(sym.scnum));
+    const char* symScnName = get_scn_name(coff, SCNUM_TO_SCIDX(sym.scnum));
     const char* symName = get_symbol_name(coff, &sym);
     char* padding = (!symScnName || strlen(symScnName) > 8) ? "\t" : "\t\t";
     printf("%s\t%d%s(%s)\t0x%x\t%s\n",
@@ -265,7 +262,7 @@ void print_all_relocs(const coff_t* coff, const char* ignored, arena_t* _ignored
 
 void print_scn(const coff_t* coff, i32 scnIdx) {
     sHdr_t sHdr = coff->sHdrs[scnIdx];
-    char* scn_name = get_scn_name(coff, scnIdx);
+    const char* scn_name = get_scn_name(coff, scnIdx);
     printf("0x%x\t0x%x\t0x%x\t0x%x\t%s\n",
         sHdr.scnptr,
         sHdr.size,
@@ -287,12 +284,21 @@ void print_all_scns(const coff_t* coff, const char* ignored, arena_t* _ignored) 
 /**
  * May want to just return a buffer, but for now, printing is fine
  */
-static void __hexdump(const coff_t* coff, u32 colsPerRow, u32 offset, u32 size) {
+static u8* __hexdump(const coff_t* coff, u32 colsPerRow, u32 offset, u32 size, arena_t* arena) {
+    if (offset + size >= coff->fileLen) {
+        printf("hexdump: offset + size must be within file bounds.\n");
+        return NULL;
+    }
+    u8* buf = ALLOC_ARRAY(arena, u8, size);
+    memcpy(buf, coff->fileBlob, size);
+    return buf;
+}
+
+static void __print_hexdump(const coff_t* coff, u32 colsPerRow, u32 offset, u32 size) {
     if (offset + size >= coff->fileLen) {
         printf("hexdump: offset + size must be within file bounds.\n");
         return;
     }
-
     u32 i = offset;
     printf("            \t");
     for (u32 k = 0; k < colsPerRow; k++) {
@@ -339,7 +345,7 @@ void hexdump(const coff_t* coff, const char* query, arena_t* arena) {
         printf("==== BEGIN HEXDUMP @0x%x:0x%x =====\n",
             offset,
             offset + size);
-            __hexdump(coff, colsPerRow, offset, size);
+            __print_hexdump(coff, colsPerRow, offset, size);
         printf("==== END HEXDUMP @0x%x:0x%x =====\n",
             offset,
             offset + size);
@@ -361,7 +367,7 @@ void hexdump(const coff_t* coff, const char* query, arena_t* arena) {
             if (offset == size)
                 continue;
             printf("%s:\n", get_symbol_name(coff, &sym));
-            __hexdump(coff, 16, offset, size);
+            __print_hexdump(coff, 16, offset, size);
         }
         printf("==== END HEXDUMP @FUNCTIONS ====\n");
     }
@@ -399,7 +405,7 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
     }
     coff.sHdrs = ALLOC_ARRAY(arena, sHdr_t, coff.fHdr.nscns);
     fread(coff.sHdrs, sizeof(sHdr_t), coff.fHdr.nscns, f);
-    u64 sHdrsEndOffset = ftell(f);
+    // u64 sHdrsEndOffset = ftell(f);
     /* Warning: processing sections prior to loading the section headers
     may yield weird behaviour. Unless you're confident you need to, it's
     best to process parts of the file after section headers have been read. */

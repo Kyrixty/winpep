@@ -199,8 +199,8 @@ typedef struct {
                             Note that the section table is 1-indexed (by
                             the format, not internally)*/
     u16 type;           /* See T_SMBL_* and DT_SMBL_* macros above */
-    char sclass;        /* storage class */
-    char numaux;        /* auxiliary count */
+    u8 sclass;        /* storage class */
+    u8 numaux;        /* auxiliary count */
     // non-file below
     b32 isaux;
     b32 isfn;
@@ -254,8 +254,8 @@ typedef struct {
 } coff_t;
 
 coff_t load_coff(const char* fpath, arena_t* arena);
-char* get_strtable_at(const coff_t* coff, u32 offset);
-char* get_scn_name(const coff_t* coff, i32 scnIdx);
+const char* get_strtable_at(const coff_t* coff, u32 offset);
+const char* get_scn_name(const coff_t* coff, i32 scnIdx);
 const char* get_symbol_name(const coff_t* coff, const symEntry_t* sym);
 void hexdump(const coff_t* coff, const char* query, arena_t* arena);
 void print_symbol(const coff_t* coff, symEntry_t sym);
