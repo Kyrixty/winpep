@@ -1,33 +1,9 @@
 #include <stdio.h>
 #include "coff.h"
 #include "arena.h"
+#include "utils.h"
 
 #define QUERY_SIZE 32
-
-bool str_eq(const char* s1, const char* s2, int MAX_CMP) {
-    if (s1 == s2) return true;
-    for (u32 i = 0; i < MAX_CMP && *s1; i++) {
-        if (s1[i] != s2[i])
-            return false;
-        if (s1[i] == '\0' && s2[i] == '\0') {
-            return true;
-        }
-    }
-    return true;
-}
-
-bool str_startswith(const char* target, const char* query, int MAX_CMP) {
-    if (target == query) return true;
-    if (target == NULL) return false;
-    if (query == NULL) return true;
-    for (u32 i = 0; i < MAX_CMP; i++) {
-        if (query[i] == '\0')
-            return true;
-        if (target[i] != query[i])
-            return false;
-    }
-    return true;
-}
 
 typedef struct {
     char* query;
@@ -48,6 +24,7 @@ static qryEntry_t QUERY_MAP[] = {
     {.query = "symtable",   .callback = print_symbol_table},
     {.query = "relocs",     .callback = print_all_relocs},
     {.query = "hexdump",    .callback = hexdump},
+    {.query = "fnssorted",  .callback = print_fns_sorted},
     {.query = "quit",       .callback = quit},
 };
 
@@ -59,7 +36,6 @@ static qryEntry_t QUERY_MAP[] = {
  * wait for main() to create the arena and then call this
  * function.
  */
-
 void cmds(const coff_t* coff) {
     for (u32 i = 0; i < N_QUERIES; i++) {
         qryEntry_t qe = QUERY_MAP[i];
