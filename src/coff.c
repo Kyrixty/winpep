@@ -129,6 +129,19 @@ char* get_scn_name(const coff_t* coff, i32 scnIdx) {
     return coff->sHdrs[scnIdx - 1].name;
 }
 
+static i32 __scn_cmp_qsort(const void* a, const void* b) {
+    return ((symEntry_t*)a)->value - ((symEntry_t*)b)->value;
+}
+
+void print_fns_sorted(const coff_t* coff, const char* ignored) {
+    qsort(
+        coff->symTable,
+        coff->fHdr.nsyms,
+        sizeof(symEntry_t),
+        __scn_cmp_qsort
+    );
+}
+
 static const char* AUX_NAME = "<auxiliary symbol>";
 
 const char* get_symbol_name(const coff_t* coff, const symEntry_t* sym) {
@@ -164,7 +177,7 @@ void print_reloc(const coff_t* coff, u32 scnIdx, u32 relIdx, relEntry_t rel) {
     );
 }
 
-void print_str_table(const coff_t* coff, const char* ignored) {
+void print_str_table(const coff_t* coff, const char* ignored, arena_t* _ignored) {
     const strTable_t* strTable = &coff->strTable;
     printf("\n====STRINGS TABLE====\n");
     for (u32 i = 0;
@@ -177,7 +190,7 @@ void print_str_table(const coff_t* coff, const char* ignored) {
     printf("\n====END STRINGS TABLE====\n");
 }
 
-void print_symbol_table(const coff_t* coff, const char* ignored) {
+void print_symbol_table(const coff_t* coff, const char* ignored, arena_t* _ignored) {
     printf("\n====SYMBOL TABLE NAMES====\n");
     printf("Indx\tSctn\t\tStrg\t\tValu\tName\n");
     for (u32 i = 0; i < coff->fHdr.nsyms; i++) {
@@ -188,7 +201,7 @@ void print_symbol_table(const coff_t* coff, const char* ignored) {
     printf("\n====END SYMBOL TABLE NAMES====\n");
 }
 
-void print_all_relocs(const coff_t* coff, const char* ignored) {
+void print_all_relocs(const coff_t* coff, const char* ignored, arena_t* _ignored) {
     for (u32 i = 0; i < coff->fHdr.nscns; i++) {
         for (u32 j = 0; j < coff->sHdrs[i].nreloc; j++) {
             relEntry_t r = coff->relocs[i][j];
@@ -208,7 +221,7 @@ void print_scn(const coff_t* coff, i32 scnIdx) {
         scn_name);
 }
 
-void print_all_scns(const coff_t* coff, const char* ignored) {
+void print_all_scns(const coff_t* coff, const char* ignored, arena_t* _ignored) {
     printf("===== BEGIN SECTIONS =====\n");
     printf("Indx\tOffset\tSize\tVAddr\tLnnoptr\tName\n");
     for (i32 i = 0; i < coff->fHdr.nscns; i++) {
@@ -218,7 +231,7 @@ void print_all_scns(const coff_t* coff, const char* ignored) {
     printf("===== END SECTIONS =====\n");
 }
 
-void hexdump(const coff_t* coff, const char* query) {
+void hexdump(const coff_t* coff, const char* query, arena_t* _ignored) {
     u32 offset = 0;
     u32 size = 0;
     u32 colsPerRow = 0;

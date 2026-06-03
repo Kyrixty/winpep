@@ -15,6 +15,8 @@ void arena_oom() {
  */
 arena_t* arena_init(u64 capacity) {
     arena_t* arena = malloc(sizeof(arena_t) + capacity);
+    if (!arena)
+        perror("arena_init: Could not allocate arena.\n");
     arena->pos = ARENA_BASE_POS;
     arena->capacity = capacity;
     return arena;

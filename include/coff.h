@@ -252,14 +252,14 @@ coff_t load_coff(const char* fpath, arena_t* arena);
 char* get_strtable_at(const coff_t* coff, u32 offset);
 char* get_scn_name(const coff_t* coff, i32 scnIdx);
 const char* get_symbol_name(const coff_t* coff, const symEntry_t* sym);
-void hexdump(const coff_t* coff, const char* query);
+void hexdump(const coff_t* coff, const char* query, arena_t* arena);
 void print_symbol(const coff_t* coff, symEntry_t sym);
 void print_reloc(const coff_t* coff, u32 scnIdx, u32 relIdx, relEntry_t rel);
 void print_scn(const coff_t* coff, i32 scnIdx);
-void print_str_table(const coff_t* coff, const char* passNull);
-void print_symbol_table(const coff_t* coff, const char* passNull);
-void print_all_relocs(const coff_t* coff, const char* passNull);
-void print_all_scns(const coff_t* coff, const char* passNull);
+void print_str_table(const coff_t* coff, const char* passNull, arena_t* _passNull);
+void print_symbol_table(const coff_t* coff, const char* passNull, arena_t* _passNull);
+void print_all_relocs(const coff_t* coff, const char* passNull, arena_t* _passNull);
+void print_all_scns(const coff_t* coff, const char* passNull, arena_t* _passNull);
 
 
 #endif
