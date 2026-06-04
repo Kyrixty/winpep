@@ -25,6 +25,7 @@ static qryEntry_t QUERY_MAP[] = {
     {.query = "relocs",     .callback = print_all_relocs},
     {.query = "hexdump",    .callback = hexdump},
     {.query = "fns",        .callback = print_fns_sorted},
+    {.query = "disasm",     .callback = disasm_fn},
     {.query = "quit",       .callback = quit},
 };
 

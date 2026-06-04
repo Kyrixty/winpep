@@ -275,5 +275,6 @@ void print_symbol_table(const coff_t* coff, const char* passNull, arena_t* _pass
 void print_all_relocs(const coff_t* coff, const char* passNull, arena_t* _passNull);
 void print_all_scns(const coff_t* coff, const char* passNull, arena_t* _passNull);
 void print_fns_sorted(const coff_t* coff, const char* ignored, arena_t* arena);
+void disasm_fn(const coff_t* coff, const char* query, arena_t* arena);
 
 #endif

@@ -1,5 +1,6 @@
 #include "coff.h"
 #include "utils.h"
+#include "x86.h"
 #include <memory.h>
 #include <string.h>
 
@@ -294,13 +295,13 @@ void print_all_scns(const coff_t* coff, const char* ignored, arena_t* _ignored) 
 /**
  * May want to just return a buffer, but for now, printing is fine
  */
-static u8* __hexdump(const coff_t* coff, u32 colsPerRow, u32 offset, u32 size, arena_t* arena) {
+static u8* __hexdump(const coff_t* coff, u32 offset, u32 size, arena_t* arena) {
     if (offset + size >= coff->fileLen) {
         printf("hexdump: offset + size must be within file bounds.\n");
         return NULL;
     }
     u8* buf = ALLOC_ARRAY(arena, u8, size);
-    memcpy(buf, coff->fileBlob, size);
+    memcpy(buf, coff->fileBlob + offset, size);
     return buf;
 }
 
@@ -376,6 +377,43 @@ void hexdump(const coff_t* coff, const char* query, arena_t* arena) {
         printf("==== END HEXDUMP @FUNCTIONS ====\n");
     }
     
+}
+
+void disasm_fn(const coff_t* coff, const char* query, arena_t* arena) {
+    symEntry_t* fnSyms = get_fn_symbols(coff, arena, NULL);
+    char fName[128];
+    i32 matched = sscanf(query, "disasm %127s", fName);
+    if (matched != 1) {
+        printf("Usage:\tdisasm <func_name>\n");
+        printf("Example: disasm printf\n");
+        printf("Note: function names may not exceed 127 characters in length.\n");
+    }
+    fnRef_t matchedRef = {0};
+    sHdr_t matchedScnHdr = {0};
+    b32 found = 0;
+    for (u32 i = 0; i < coff->ndfns; i++) {
+        symEntry_t fnSym = fnSyms[i];
+        const char* fnSymName = get_symbol_name(coff, &fnSym);
+        if (str_eq(fnSymName, fName, 127)) {
+            found = true;
+            matchedRef = coff->fnRefs[i];
+            matchedScnHdr = *get_scn_hdr(coff, SCNUM_TO_SCIDX(fnSym.scnum));
+            break;
+        }
+    }
+    if (!found) {
+        printf("disasm: '%s' is not a function.\n", fName);
+        return;
+    }
+    u8* fnBlob = __hexdump(coff, matchedScnHdr.scnptr + matchedRef.offset, matchedRef.fnSize, arena);
+    u32 nInstrs = 0;
+    x86Instr_t* instrs = disassemble(arena, fnBlob, matchedRef.fnSize, &nInstrs);
+    if (instrs) {
+        for (u32 i = 0; i < nInstrs; i++) {
+            print_x86(instrs[i]);
+        }
+        arena_pop(arena, sizeof(x86Instr_t) * nInstrs);
+    }
 }
 
 coff_t load_coff(const char* fpath, arena_t* arena) {
