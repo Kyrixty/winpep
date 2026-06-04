@@ -120,14 +120,14 @@ const char* get_strtable_at(const coff_t* coff, u32 offset) {
 
 #define SCNUM_TO_SCIDX(scnum) (scnum - 1)
 
-sHdr_t* get_scn_hdr(const coff_t* coff, i32 scnIdx) {
+const sHdr_t* get_scn_hdr(const coff_t* coff, i32 scnIdx) {
     if (scnIdx <= 0) {
         return &coff->sHdrs[0]; /* ??? */
     }
     return &coff->sHdrs[scnIdx];
 }
 
-scnBlob_t* get_scn_blob(const coff_t* coff, i32 scnIdx) {
+const scnBlob_t* get_scn_blob(const coff_t* coff, i32 scnIdx) {
     if (scnIdx <= 0) {
         return &coff->scns[0]; /* ??? */
     }
@@ -146,31 +146,39 @@ const char* get_scn_name(const coff_t* coff, i32 scnIdx) {
     return coff->sHdrs[scnIdx].name;
 }
 
-static i32 __sym_cmp_qsort(const void* a, const void* b) {
-    return ((symEntry_t*)a)->value - ((symEntry_t*)b)->value;
+// static i32 __sym_cmp_qsort(const void* a, const void* b) {
+//     return ((symEntry_t*)a)->value - ((symEntry_t*)b)->value;
+// }
+
+static i32 __fnref_cmp_qsort(const void* a, const void* b) {
+    return ((fnRef_t*)a)->offset - ((fnRef_t*)b)->offset;
 }
 
-bool static sym_is_fn(const coff_t* coff, symEntry_t sym) {
+b32 static sym_is_fn(const coff_t* coff, symEntry_t sym) {
     // Unsure if this is correct, may also be slow for many symbols
     return SYMBOL_IS_FCN(sym.type);
 }
 
+b32 static fn_sym_has_defn(symEntry_t sym) {
+    return sym.isfn && sym.scnum > 0;
+} 
+
 symEntry_t* get_fn_symbols(const coff_t* coff, arena_t* arena, u32* outTableSize) {
-    u32 nfns = coff->nfns;
+    u32 nfns = coff->ndfns;
     u32 tableSize = sizeof(symEntry_t) * nfns;
 
     // Grab functions from symTable
     symEntry_t* tmp = ALLOC_ARRAY(arena, symEntry_t, nfns);
     for (u32 i = 0; i < nfns; i++) {
-        symEntry_t sym = coff->symTable[coff->fnSymIdxs[i]];
+        symEntry_t sym = coff->symTable[coff->fnRefs[i].symIdx];
         tmp[i] = sym;
     }
-    qsort(
-        tmp,
-        nfns,
-        sizeof(symEntry_t),
-        __sym_cmp_qsort
-    );
+    // qsort(
+    //     tmp,
+    //     nfns,
+    //     sizeof(symEntry_t),
+    //     __sym_cmp_qsort
+    // );
     if (outTableSize) {
         *outTableSize = tableSize;
     }
@@ -181,12 +189,14 @@ symEntry_t* get_fn_symbols(const coff_t* coff, arena_t* arena, u32* outTableSize
 void print_fns_sorted(const coff_t* coff, const char* ignored, arena_t* arena) {
     // Don't want to sort coff->symTable in place so we need to
     // copy.
-    u32 nfns = coff->nfns;
+    u32 nfns = coff->ndfns;
     u32 tableSize = 0;
     symEntry_t* fnSymbols = get_fn_symbols(coff, arena, &tableSize);
     
     for (u32 i = 0; i < nfns; i++) {
+        // Any function with a size of 0 has only been declared
         print_symbol(coff, fnSymbols[i]);
+        // printf("0x%x\n", coff->fnRefs[i].fnSize);
     }
     arena_pop(arena, tableSize);
 }
@@ -354,18 +364,12 @@ void hexdump(const coff_t* coff, const char* query, arena_t* arena) {
         u32 tableSize = 0;
         symEntry_t* fnSymbols = get_fn_symbols(coff, arena, &tableSize);
         printf("==== BEGIN HEXDUMP @FUNCTIONS ====\n");
-        for (u32 i = 0; i < coff->nfns; i++) {
+        for (u32 i = 0; i < coff->ndfns; i++) {
             symEntry_t sym = fnSymbols[i];
+            fnRef_t fnRef = coff->fnRefs[i];
             sHdr_t sHdr = *get_scn_hdr(coff, SCNUM_TO_SCIDX(sym.scnum));
             u32 offset = sHdr.scnptr + sym.value;
-            u32 size = 0;
-            
-            if (i == coff->nfns - 1)
-                size = sHdr.scnptr + sHdr.size - offset;
-            else
-                size = fnSymbols[i + 1].value - sym.value;
-            if (offset == size)
-                continue;
+            u32 size = fnRef.fnSize;
             printf("%s:\n", get_symbol_name(coff, &sym));
             __print_hexdump(coff, 16, offset, size);
         }
@@ -430,12 +434,15 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
     fseek(f, coff.fHdr.symptr, SEEK_SET);
     char currNumaux = 0;
     u32 nfns = 0;
+    u32 ndfns = 0;
     for (u32 i = 0; i < coff.fHdr.nsyms; i++) {
         fread(&coff.symTable[i], SYMENTRY_FSIZE, 1, f);
         symEntry_t sym = coff.symTable[i];
         if (sym_is_fn(&coff, sym)) {
             coff.symTable[i].isfn = true;
             nfns++;
+            if (fn_sym_has_defn(coff.symTable[i]))
+                ndfns++;
         }
         if (sym.numaux) {
             currNumaux = sym.numaux;
@@ -448,12 +455,48 @@ coff_t load_coff(const char* fpath, arena_t* arena) {
         
     }
     // setup function symbol indexes
-    coff.fnSymIdxs = ALLOC_ARRAY(arena, u32, nfns);
-    coff.nfns = nfns;
+    coff.ndfns = ndfns;
+    coff.nufns = nfns - ndfns;
+    coff.fnRefs = ALLOC_ARRAY(arena, fnRef_t, ndfns);
+    coff.fnRefsUndefined = ALLOC_ARRAY(arena, fnRef_t, coff.nufns);
     u32 j = 0;
+    u32 k = 0;
     for (u32 i = 0; i < coff.fHdr.nsyms; i++) {
-        if (coff.symTable[i].isfn)
-            coff.fnSymIdxs[j++] = i;
+        if (coff.symTable[i].isfn) {
+            b32 hasDefn = fn_sym_has_defn(coff.symTable[i]);
+            if (hasDefn) {
+                coff.fnRefs[j++] = (fnRef_t) {
+                    .symIdx = i,
+                    .hasDefn = hasDefn,
+                    .fnSize = 0,
+                    .offset = coff.symTable[i].value};
+            }
+            else {
+                coff.fnRefsUndefined[k++] = (fnRef_t) {
+                    .symIdx = i,
+                    .hasDefn = hasDefn,
+                    .fnSize = 0,
+                    .offset = 0};
+            }
+        }
+
+    }
+
+    qsort(coff.fnRefs, ndfns, sizeof(fnRef_t), __fnref_cmp_qsort);
+
+    // finish function symbol setup
+    for (u32 i = 0; i < ndfns; i++) {
+        u32 fnSize = 0;
+        symEntry_t curr = coff.symTable[coff.fnRefs[i].symIdx], next;
+        if (i < ndfns - 1) {
+            next = coff.symTable[coff.fnRefs[i + 1].symIdx];
+            fnSize = next.value - curr.value;
+        }
+        else {
+            sHdr_t fnScnHdr = *get_scn_hdr(&coff, SCNUM_TO_SCIDX(curr.scnum));
+            fnSize = fnScnHdr.size - curr.value;
+        }
+        coff.fnRefs[i].fnSize = fnSize;
     }
     fseek(f, beforePos, SEEK_SET);
 

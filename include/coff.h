@@ -61,7 +61,7 @@
 /* Symbol Type Macros */
 /**
  * You should use these macros to determine the type of a symbol.
- * If you want to use your own, symEntry_t.type = base type + derived type << 8
+ * If you want to use your own, symEntry_t.type = base type + derived type << 4
  */
 #define SYMBOL_T(symType)       ((symType) & 0x0f)
 #define SYMBOL_DT(symType)      ((symType) >> 4)
@@ -238,6 +238,13 @@ typedef struct {
     u8* blob;
     lnnoEntry_t* lnnoLUT;
 } scnBlob_t;
+
+typedef struct {
+    u32 symIdx;
+    b32 hasDefn;
+    u32 fnSize;
+    u32 offset;
+} fnRef_t;
 typedef struct {
     fHdr_t fHdr;
     oHdr_t oHdr;
@@ -249,8 +256,10 @@ typedef struct {
     u8* fileBlob;
     u32 fileLen;
     // non-file below
-    u32* fnSymIdxs;
-    u32 nfns;
+    fnRef_t* fnRefs;
+    fnRef_t* fnRefsUndefined;
+    u32 ndfns;
+    u32 nufns;
 } coff_t;
 
 coff_t load_coff(const char* fpath, arena_t* arena);
