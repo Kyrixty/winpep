@@ -9,6 +9,7 @@ typedef enum {
     add,
     push,
     pop,
+    UNKNOWN_MMC,
 } mnemonic;
 
 /* May just want letters for register names */
@@ -68,6 +69,10 @@ typedef union {
     r16 wordReg;
     r32 dWordReg;
     r64 qWordReg;
+    u8 imm8;
+    u16 imm16;
+    u32 imm32;
+    u64 imm64;
 } opVal;
  
 typedef struct {
@@ -85,6 +90,7 @@ typedef struct {
     operand op3;
     operand op4;
     u32 nOps;
+    u32 size_bytes;
 } x86Instr_t;
 
 

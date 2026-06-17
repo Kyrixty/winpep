@@ -4,7 +4,6 @@
  * 0x48 = REX.W (Register-EXtension (32-bit -> 64-bit))
  */
 
-DECL_LIST(x86List, x86Instr_t);
 
 static const u8 OPCODE_HAS_MRM[] = {
     [0x90] = false,
@@ -96,103 +95,75 @@ static const char* REG_NAME_MAP[] = {
     [rdi + 64] = "rdi",
 };
 
-static char* regToStr(opVal reg, u32 regSize) {
-    return REG_NAME_MAP[reg.qWordReg + regSize];
-}
+static const char* MMC_NAME_MAP[] = {
+    [add] = "add",
+    [push] = "push",
+    [pop] = "pop",
+    [UNKNOWN_MMC] = "???",
+};
+
+static const char* regToStr(opVal reg, u32 regSize) { return REG_NAME_MAP[reg.qWordReg + regSize]; }
+static const char* mmcToStr(mnemonic mmc) { return MMC_NAME_MAP[mmc]; };
 
 void print_x86(x86Instr_t instr) {
-    switch (instr.mmc) {
-        case push: {
-            char* rhs = "???";
-            if (WITHIN_RANGE(instr.opcode, 0x50, 0x57)) {
-                rhs = regToStr(instr.op1.val, instr.op1.valSize);
-            }
-            printf("push\t%s\n", rhs);
-        }; break;
-        default: { printf("???\n"); };
-    }
+    printf("%s %s\n",
+        mmcToStr(instr.mmc),
+        regToStr(instr.op1.val, instr.op1.valSize));
 }
 
-void set_op_1(x86Instr_t* out, opType type, u32 val, u32 valSize) { out->op1 = (operand) {.type = type, .val = val, .valSize = valSize}; }
-void set_op_2(x86Instr_t* out, opType type, u32 val, u32 valSize) { out->op2 = (operand) {.type = type, .val = val, .valSize = valSize}; }
-void set_op_3(x86Instr_t* out, opType type, u32 val, u32 valSize) { out->op3 = (operand) {.type = type, .val = val, .valSize = valSize}; }
-void set_op_4(x86Instr_t* out, opType type, u32 val, u32 valSize) { out->op4 = (operand) {.type = type, .val = val, .valSize = valSize}; }
+typedef struct {
+    bool ok;
+    void* val;
+    char* detail;
+} Result;
 
-/**
- * Parses a 1-byte opcode x86 instruction.
- * 
- * Pass blob after opcode.
- */
-static i32 __parse_1byte_x86(u32 opcode, u8* blob, u32 blobSize, x86Instr_t* out) {
-    i32 bytes_parsed = -1;
-    u32 valSize = 8;
-    // push reg
-    if (WITHIN_RANGE(opcode, 0x50, 0x57)) {
-        out->mmc = push;
-        out->nOps = 1;
-        valSize = 32;
-        set_op_1(out, REG, opcode - 0x50, valSize);
-        bytes_parsed = 0; // jank? 
-    }
-    return bytes_parsed;
+#define Try(result) ((result).ok)
+
+static inline u8 peekAt(u8* blob, u32 offset) { return blob[offset]; }
+static inline u8 peekNext(u8* blob) { return peekAt(blob, 0); }
+
+static mnemonic getMnemonicByOpcode(u32 opcode) {
+    /* If we need to speedup can use a table for MSB and a table for LSB */
+    if (WITHIN_RANGE(opcode, 0x50, 0x57)) return push;
+    return UNKNOWN_MMC;
 }
 
-/**
- * Parses a 2-byte opcode x86 instruction.
- * 
- * Pass blob after opcode.
- */
-static i32 __parse_2byte_x86(u32 opcode, u8* blob, u32 blobSize, x86Instr_t* out) {
-    return -1;
-}
+static Result _realDisasm(u8* blob, u32 blobSize, x86Instr_t* out) {
+    Result r = {0};
+    u8 b1 = peekAt(blob, 0), b2 = peekAt(blob, 1), b3 = peekAt(blob, 2); // BUG: ignoring < 3 opcodes at the end
 
-/**
- * Parses a 3-byte opcode x86 instruction.
- * 
- * Pass blob after opcode.
- */
-static i32 __parse_3byte_x86(u32 opcode, u8* blob, u32 blobSize, x86Instr_t* out) {
-    return -1;
-}
-
-/**
- * Parses 1 instruction in the blob, returning how many bytes were
- * parsed.
- * 
- * Returns -1 on error
- */
-static i32 __disassemble(u8* blob, u32 blobSize, x86Instr_t* out) {
-    u32 i = 0;
-    u8 byte = blob[i];
-    u8 b1 = byte, b2 = 0, b3 = 0;
-    
-    // ----------- OPCODE -----------
-    // First get opcode size
-    if (blobSize >= 3) {
-        b2 = blob[i + 1];
-        b3 = blob[i + 2];
-    }
-    else if (blobSize > 1) {
-        b2 = blob[i + 1];
-    }
-    u32 opcode_size = get_opcode_size(b1, b2);
+    if (blobSize < 3) { r.detail = "mmm yumy blob consumed\n"; goto ReturnResult; }
+    u8 opSize = get_opcode_size(b1, b2);
     u32 opcode = 0;
-    for (u32 j = 0; j < opcode_size; j++) {
-        opcode |= blob[j] << 8 * j;
+    for (u8 i = 0; i < opSize; i++) {
+        opcode |= (u32)blob[i] << 8 * i;
     }
-    out->opcode = opcode;
 
-    i32 nParsed = 0;
-    switch (opcode_size) {
-        case 1: { nParsed = __parse_1byte_x86(opcode, blob + opcode_size, blobSize, out); }; break;
-        case 2: { nParsed = __parse_2byte_x86(opcode, blob + opcode_size, blobSize, out); }; break;
-        case 3: { nParsed = __parse_3byte_x86(opcode, blob + opcode_size, blobSize, out); }; break;
-        default: { return -1; }; break;
+    // decode
+    mnemonic mmc = getMnemonicByOpcode(opcode);
+    u32 valSize = 0;
+    u32 nParsed = 0;
+    switch (mmc) {
+        case push:
+        {
+            valSize = 32;
+            // TODO: handle operands
+            out->op1 = (operand) {.type = REG, .val = opcode - 0x50, .valSize = valSize};
+            nParsed = 0;
+        }; break;
+        case UNKNOWN_MMC: { r.detail = "Unknown opcode"; } // fallthru
+        default: { goto ReturnResult; }; break;
     }
-    if (nParsed < 0) {
-        return nParsed;
-    }
-    return opcode_size + nParsed;
+
+    out->opcode = opcode;
+    out->mmc = mmc;
+    out->size_bytes = opSize + nParsed;
+    r.ok = true;
+    r.val = out;
+
+
+ReturnResult:
+    return r;
 }
 
 x86Instr_t* disassemble(arena_t* arena, u8* blob, u32 blobSize, u32* outNInstrs) {
@@ -224,33 +195,14 @@ x86Instr_t* disassemble(arena_t* arena, u8* blob, u32 blobSize, u32* outNInstrs)
      * is calculated using x = 
      */
 
-     /**
-      * I want to rework this system before it gets to clustered.
-      * I don't see it going in a good direction in it's current state.
-      * Perhaps implement parsing for a few more complex instructions
-      * and then rethink how I want this disassembler to look.
-      */
-    x86Instr_t in = {0};
-    x86List* list = x86List_init();
-    u32 i = 0;
-    u32 nInstrs = 0;
-    while (i < blobSize) {
-        i32 nParsed = __disassemble(blob + i, blobSize - i, &in);
-        if (nParsed < 0)
-            break;
-        // printf("0x%x\n", in.opcode);
-        x86List_append(list, in);
-        i += nParsed;
-        nInstrs++;
+    Result r = {0};
+    *outNInstrs = 0;
+    x86Instr_t* ret = ALLOC_STRUCT(arena, x86Instr_t);
+    x86Instr_t* v = ret;
+    while (Try((r = _realDisasm(blob, blobSize, v)))) {
+        blob += ((x86Instr_t*)r.val)->size_bytes;
+        v = ALLOC_STRUCT(arena, x86Instr_t);
+        *outNInstrs = *outNInstrs + 1;
     }
-    if (outNInstrs) *outNInstrs = nInstrs;
-    x86Instr_t* copy = NULL;
-    if (list->len == 0) {
-        goto freeListAndReturn;
-    }
-    copy = ALLOC_ARRAY(arena, x86Instr_t, list->len);
-    memcpy(copy, list->data, sizeof(x86Instr_t) * list->len);
-freeListAndReturn:
-    x86List_free(list);
-    return copy;
+    return ret;
 }

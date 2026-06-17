@@ -406,6 +406,7 @@ void disasm_fn(const coff_t* coff, const char* query, arena_t* arena) {
         printf("disasm: '%s' is not a function.\n", fName);
         return;
     }
+    // fnBlob is LEAKING!
     u8* fnBlob = __hexdump(coff, matchedScnHdr.scnptr + matchedRef.offset, matchedRef.fnSize, arena);
     u32 nInstrs = 0;
     x86Instr_t* instrs = disassemble(arena, fnBlob, matchedRef.fnSize, &nInstrs);
