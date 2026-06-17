@@ -16,6 +16,7 @@ typedef struct arena
 #define ALLOC_STRUCT_NZ(arena, T) ((T*)arena_alloc((arena), 1, sizeof(T), true))
 #define ALLOC_ARRAY(arena, T, n) ((T*)arena_alloc((arena), (n), sizeof(T), false))
 #define ALLOC_ARRAY_NZ(arena, T) ((T*)arena_alloc((arena), (n), sizeof(T), true))
+#define ARENA_PTR(arena) ((u8*)(arena) + (arena)->pos + sizeof(arena_t))
 
 /**
  * Initializes arena with capacity `capacity`.
