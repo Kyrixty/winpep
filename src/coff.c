@@ -387,6 +387,7 @@ void disasm_fn(const coff_t* coff, const char* query, arena_t* arena) {
         printf("Usage:\tdisasm <func_name>\n");
         printf("Example: disasm printf\n");
         printf("Note: function names may not exceed 127 characters in length.\n");
+        return;
     }
     fnRef_t matchedRef = {0};
     sHdr_t matchedScnHdr = {0};
