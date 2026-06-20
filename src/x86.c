@@ -9,17 +9,6 @@ static const u8 OPCODE_HAS_MRM[] = {
     [0x90] = false,
 };
 
-typedef struct {
-    u8 mod;
-    u8 regOrOpcode;
-    u8 regOrMem;
-} ModRM;
-
-typedef struct {
-    u8 scale;
-    u8 index;
-    u8 base;
-} SIB;
 
 static ModRM parse_mod_rm(u8 byte) {
     return (ModRM) {
@@ -37,16 +26,76 @@ static SIB parse_sib(u8 byte) {
     };
 }
 
-b32 has_mod_rm(u8 opcode) {
+static b32 has_mod_rm(u8 opcode) {
     return OPCODE_HAS_MRM[opcode];
 }
 
-u8 get_opcode_size(u8 b1, u8 b2) {
+static u8 get_opcode_size(u8 b1, u8 b2) {
     u8 ret = 0;
     if (b1 != 0x0f) ret = 1;
     else if (b1 == 0x0f && b2 != 0x38 && b2 != 0x3a) ret = 2;
     else ret = 3;
     return ret;
+}
+
+static REX get_rex(u8 byte) {
+    return (REX) {
+        .pattern = byte & 0xf0,
+        .W = byte & 0x08,
+        .R = byte & 0x04,
+        .X = byte & 0x02,
+        .B = byte & 0x01,
+    };
+}
+
+// Legacy prefixes
+typedef enum {
+    // group 1 (lock/repeat)
+    LOCK = 0xf0,
+    REPNE = 0xf2,
+    REP = 0xf3,
+
+    // group 2 (segment override/branch hints)
+    SO_CS = 0x2e,       // CS Segment Override
+    SO_SS = 0x36,
+    SO_DS = 0x3e,
+    SO_ES = 0x26,
+    SO_FS = 0x64,
+    SO_GS = 0x65,
+    BNT = 0x2e,         // Branch-Not-Taken
+    BT = 0x3e,          // Branch-Taken
+
+    // group 3
+    OpSizeOverridePfx = 0x66,
+    
+    // group 4
+    AddrSizeOverridePfx = 0x67,
+
+} legacyPrefix;
+
+static legacyPrefix LEGACY_PREFIXES[] = {
+    LOCK,
+    REPNE,
+    REP,
+    SO_CS,
+    SO_SS,
+    SO_DS,
+    SO_ES,
+    SO_FS,
+    SO_GS,
+    BNT,
+    BT,
+    OpSizeOverridePfx,
+    AddrSizeOverridePfx,
+};
+
+#define N_LEGACY_PREFIXES sizeof(LEGACY_PREFIXES) / sizeof(legacyPrefix)
+
+static bool is_legacy(u8 byte) {
+    for (u32 i = 0; i < N_LEGACY_PREFIXES; i++) {
+        if (LEGACY_PREFIXES[i] == byte) return true;
+    }
+    return false;
 }
 
 /** 
@@ -97,6 +146,7 @@ static const char* REG_NAME_MAP[] = {
 
 static const char* MMC_NAME_MAP[] = {
     [add] = "add",
+    [adc] = "adc",
     [push] = "push",
     [pop] = "pop",
     [UNKNOWN_MMC] = "???",
@@ -113,30 +163,63 @@ void print_x86(x86Instr_t instr) {
 
 typedef struct {
     bool ok;
-    void* val;
+    union {
+        void* ptr;
+        u64 n;
+    } val;
     char* detail;
 } Result;
 
 #define Try(result) ((result).ok)
+typedef struct {
+    u8* data;
+    u32 size;
+} Blob;
 
-static inline u8 peekAt(u8* blob, u32 offset) { return blob[offset]; }
-static inline u8 peekNext(u8* blob) { return peekAt(blob, 0); }
+static inline u8 peekAt(Blob blob, u32 offset) { return blob.data[offset]; }
+static inline u8 peekNext(Blob blob) { return peekAt(blob, 1); }
+static inline u8 peek(Blob blob) { return peekAt(blob, 0); }
 
 static mnemonic getMnemonicByOpcode(u32 opcode) {
     /* If we need to speedup can use a table for MSB and a table for LSB */
     if (WITHIN_RANGE(opcode, 0x50, 0x57)) return push;
+    if (WITHIN_RANGE(opcode, 0x00, 0x05)
+        || WITHIN_RANGE(opcode, 0x80, 0x81)
+        || opcode == 0x83) return add;
     return UNKNOWN_MMC;
 }
 
-static Result _realDisasm(u8* blob, u32 blobSize, x86Instr_t* out) {
+static u8 consumeByte(Blob* blob) {
+    u8 b = blob->data[0];
+    blob->data++;
+    blob->size--;
+    return b;
+}
+
+
+
+static Result _realDisasm(Blob blob, x86Instr_t* out) {
     Result r = {0};
+    if (!blob.data || !blob.size) { r.detail = "no blob/empty blob passed"; goto ReturnResult; };
+    Blob orig = blob;
+    // skip legacy prefixes
+    u32 legacySkipped = 0;
+    while (blob.size && is_legacy(peek(blob))) { legacySkipped++; consumeByte(&blob); }
+
+    u32 rexByte = peek(blob);
+    if (WITHIN_RANGE(rexByte, 0x40, 0x4f)) {
+        out->hasRex = true;
+        out->rex = get_rex(rexByte);
+        consumeByte(&blob);
+    }
+
     u8 b1 = peekAt(blob, 0), b2 = peekAt(blob, 1), b3 = peekAt(blob, 2); // BUG: ignoring < 3 opcodes at the end
 
-    if (blobSize < 3) { r.detail = "mmm yumy blob consumed\n"; goto ReturnResult; }
+    if (blob.size < 3) { r.detail = "mmm yumy blob consumed\n"; goto ReturnResult; }
     u8 opSize = get_opcode_size(b1, b2);
     u32 opcode = 0;
     for (u8 i = 0; i < opSize; i++) {
-        opcode |= (u32)blob[i] << 8 * i;
+        opcode |= (u32)peekAt(blob, i) << 8 * i;
     }
 
     // decode
@@ -151,6 +234,11 @@ static Result _realDisasm(u8* blob, u32 blobSize, x86Instr_t* out) {
             out->op1 = (operand) {.type = REG, .val = opcode - 0x50, .valSize = valSize};
             nParsed = 0;
         }; break;
+
+        case add:
+        {
+
+        }; break;
         case UNKNOWN_MMC: { r.detail = "Unknown opcode"; } // fallthru
         default: { goto ReturnResult; }; break;
     }
@@ -159,7 +247,7 @@ static Result _realDisasm(u8* blob, u32 blobSize, x86Instr_t* out) {
     out->mmc = mmc;
     out->size_bytes = opSize + nParsed;
     r.ok = true;
-    r.val = out;
+    r.val.n = opSize + nParsed + legacySkipped + out->hasRex;
 
 
 ReturnResult:
@@ -196,11 +284,13 @@ x86Instr_t* disassemble(arena_t* arena, u8* blob, u32 blobSize, u32* outNInstrs)
      */
 
     Result r = {0};
+    Blob b = (Blob) {.data = blob, .size = blobSize};
     *outNInstrs = 0;
     x86Instr_t* ret = ALLOC_STRUCT(arena, x86Instr_t);
     x86Instr_t* v = ret;
-    while (Try((r = _realDisasm(blob, blobSize, v)))) {
-        blob += ((x86Instr_t*)r.val)->size_bytes;
+    while (Try((r = _realDisasm(b, v)))) {
+        b.data += r.val.n;
+        b.size -= r.val.n;
         v = ALLOC_STRUCT(arena, x86Instr_t);
         *outNInstrs = *outNInstrs + 1;
     }
